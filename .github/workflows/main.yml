@@ -1,98 +1,133 @@
-name: PBRP Build - Absolute Bypass Auth
+name: PBRP Build - Advanced Modular
 
 on:
   workflow_dispatch:
+    inputs:
+      MANIFEST_URL:
+        description: 'URL Manifest PBRP'
+        required: true
+        default: 'https://github.com/PitchBlackRecoveryProject/manifest.git'
+      MANIFEST_BRANCH:
+        description: 'Branch Manifest'
+        required: true
+        default: 'pbrp-12.1'
+      DEVICE_TREE_URL:
+        description: 'URL Device Tree'
+        required: true
+        default: 'https://github.com/nevadamurdock/android_device_samsung_a05s'
+      DEVICE_TREE_BRANCH:
+        description: 'Branch Device Tree'
+        required: true
+        default: 'fox'
+      DEVICE_PATH:
+        description: 'Path Penyimpanan Tree'
+        required: true
+        default: 'device/samsung/a05s'
+      DEVICE_NAME:
+        description: 'Nama Device (m14ns/a05s)'
+        required: true
+        default: 'a05s'
+      MAKEFILE_NAME:
+        description: 'Nama Makefile (lunch target)'
+        required: true
+        default: 'pbrp_a05s'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
-    - name: Free Disk Space & Setup Swap
-      run: |
-        sudo swapoff -a || true
-        sudo rm -f /swapfile
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo fallocate -l 10G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
+    - name: Check Out
+      uses: actions/checkout@v4
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc build-essential tar zip curl lib32ncurses5-dev libssl-dev libxml2-utils rsync python3 git
+    - name: Cleanup Runner
+      uses: rokibhasansagar/slimhub_actions@main
 
-    - name: Setup Repo Tool
+    - name: Prepare Build Environment
+      run: |
+        sudo apt update && sudo apt install git aria2 -y
+        mkdir setup_scripts && cd setup_scripts
+        git clone https://gitlab.com/OrangeFox/misc/scripts
+        cd scripts
+        sudo bash setup/android_build_env.sh
+        # Patch skrip SDK agar tidak error saat naik satu direktori
+        sed -i 's/cd -/cd ../g' setup/install_android_sdk.sh
+        sudo bash setup/install_android_sdk.sh
+
+    - name: Set Swap Space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 12
+
+    - name: Install Repo Tool
       run: |
         mkdir ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
 
-    - name: Initialize & Sync Source (Force Bypass)
+    - name: Initialize & Sync Source
       run: |
-        export PATH=~/bin:$PATH
-        # Konfigurasi Identitas
-        git config --global user.email "hafidz@cachyos"
-        git config --global user.name "nevadamurdock"
-        
-        # --- BYPASS AUTH STRATEGY ---
-        # Memaksa Git untuk tidak meminta password/auth interaktif
-        git config --global credential.helper store
-        git config --global core.askpass /bin/echo
-        
-        mkdir pbrp && cd pbrp
-        
-        # Gunakan --no-clone-bundle dan --no-repo-verify untuk meminimalkan handshake ke server
-        repo init --depth=1 -u https://github.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify --no-clone-bundle
-        
-        # Jika tetap gagal karena auth, gunakan fallback ke link alternatif (GitLab)
-        if [ $? -ne 0 ]; then
-           echo "GitHub Auth failed, trying GitLab Mirror..."
-           repo init --depth=1 -u https://gitlab.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify --no-clone-bundle
-        fi
-
-        # Sync dengan retry dan paksa bypass tags
-        repo sync -c -j$(nproc --all) --force-sync --no-tags --no-clone-bundle --optimized-fetch --prune
+        mkdir workspace && cd workspace
+        git config --global user.name "Agus Tamvan"
+        git config --global user.email "agus@tamvan.com"
+        # Gunakan input dari workflow dispatch
+        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --no-repo-verify
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
+        echo "workspace_path=$(pwd)" >> $GITHUB_ENV
 
     - name: Clone Device Tree
       run: |
-        cd pbrp
-        # Menggunakan token GITHUB_TOKEN bawaan runner agar clone tree milikmu lancar
-        git clone https://${{ github.token }}@github.com/nevadamurdock/android_device_samsung_a05s -b fox device/samsung/a05s
+        cd workspace
+        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ${{ github.event.inputs.DEVICE_PATH }}
 
-    - name: Auto-Patch BoardConfig
+    - name: Auto-Patch PBRP Flags
       run: |
-        BOARD_CONFIG="pbrp/device/samsung/a05s/BoardConfig.mk"
-        echo -e "\n# --- PBRP Standard Flags ---" >> $BOARD_CONFIG
+        # Menggunakan Path dari Input
+        BOARD_CONFIG="workspace/${{ github.event.inputs.DEVICE_PATH }}/BoardConfig.mk"
+        echo -e "\n# --- PBRP Automated Patches ---" >> $BOARD_CONFIG
         echo "PB_OFFICIAL := false" >> $BOARD_CONFIG
         echo "PB_DEVICE_MAINTAINER := \"Agus Tamvan\"" >> $BOARD_CONFIG
         echo "PB_DISABLE_DEFAULT_TREBLE_COMPATIBILITY := true" >> $BOARD_CONFIG
         echo "PB_FORCE_EXTRACT_BINS := true" >> $BOARD_CONFIG
         echo "USE_GOMA := false" >> $BOARD_CONFIG
         echo "BOARD_USE_VNDK_VERSION := current" >> $BOARD_CONFIG
-        echo "TARGET_MAX_EXE_OBJ_SIZE := 0xFFFFFF" >> $BOARD_CONFIG
-        echo "TW_INPUT_BLACKLIST := \"hbtp_vm\"" >> $BOARD_CONFIG
         echo "TW_SUPPORT_INPUT_1_2 := true" >> $BOARD_CONFIG
         echo "TW_FILTER_TOUCH_EVENTS := true" >> $BOARD_CONFIG
 
-    - name: Build PBRP
+    - name: Building PBRP
       run: |
-        export PATH=~/bin:$PATH
-        cd pbrp
+        cd workspace
+        source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
         export _JAVA_OPTIONS="-Xmx4g"
-        source build/envsetup.sh
-        lunch pbrp_a05s-eng || lunch twrp_a05s-eng
+        # Paksa penggunaan lunch target dari input
+        lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng || lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng
+        make clean
         mka pbrp -j2
 
-    - name: Upload to Telegram
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v1
       if: success()
-      run: |
-        cd pbrp/out/target/product/a05s/
-        ZIP=$(ls PBRP*.zip | head -n 1)
-        curl -F document=@"$ZIP" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=✅ PBRP Build Success!"
+      with:
+        files: |
+          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/PBRP*.zip
+          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery.img
+        name: PBRP-${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
+        tag_name: ${{ github.run_id }}
+        body: |
+          Build PBRP Sukses!
+          Device: ${{ github.event.inputs.DEVICE_NAME }}
+          Maintainer: Agus Tamvan
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Notify Failure
-      if: failure()
+    - name: Telegram Notification
+      if: always()
       run: |
-        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" -d chat_id="${{ secrets.CHAT_ID }}" -d text="❌ Build PBRP Gagal lagi! Cek log di tab Actions."
+        STATUS="${{ job.status }}"
+        MESSAGE="Build PBRP Samsung A05s: $STATUS"
+        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+        -d chat_id="${{ secrets.CHAT_ID }}" \
+        -d text="$MESSAGE"
