@@ -1,4 +1,4 @@
-name: PBRP Build Optimized Final
+name: PBRP Build Bypass Auth
 
 on:
   workflow_dispatch:
@@ -16,7 +16,6 @@ jobs:
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
-        free -h
 
     - name: Install Dependencies
       run: |
@@ -29,17 +28,18 @@ jobs:
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
 
-    - name: Initialize & Sync PBRP Source
+    - name: Initialize & Sync Source
       run: |
         export PATH=~/bin:$PATH
         git config --global user.email "hafidz@cachyos"
         git config --global user.name "nevadamurdock"
         
         mkdir pbrp && cd pbrp
-        # Menambahkan --no-repo-verify untuk stabilitas koneksi di GitHub Runner
+        
+        # Menggunakan GitLab sebagai fallback utama karena GitHub sering minta auth interaktif
+        repo init --depth=1 -u https://gitlab.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify || \
         repo init --depth=1 -u https://github.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify
         
-        # Sync dengan proteksi kegagalan koneksi
         repo sync -c -j$(nproc --all) --force-sync --no-tags --no-clone-bundle --optimized-fetch --prune
 
     - name: Clone Device Tree
@@ -47,17 +47,10 @@ jobs:
         cd pbrp
         git clone https://github.com/nevadamurdock/android_device_samsung_a05s -b fox device/samsung/a05s
 
-    - name: Auto-Patch BoardConfig (OOM, VNDK, & Touch Fix)
+    - name: Auto-Patch BoardConfig
       run: |
         BOARD_CONFIG="pbrp/device/samsung/a05s/BoardConfig.mk"
-        echo "" >> $BOARD_CONFIG
-        echo "# --- Automated Patches ---" >> $BOARD_CONFIG
-        echo "USE_GOMA := false" >> $BOARD_CONFIG
-        echo "BOARD_USE_VNDK_VERSION := current" >> $BOARD_CONFIG
-        echo "TARGET_MAX_EXE_OBJ_SIZE := 0xFFFFFF" >> $BOARD_CONFIG
-        echo "TW_INPUT_BLACKLIST := \"hbtp_vm\"" >> $BOARD_CONFIG
-        echo "TW_SUPPORT_INPUT_1_2 := true" >> $BOARD_CONFIG
-        echo "TW_FILTER_TOUCH_EVENTS := true" >> $BOARD_CONFIG
+        echo -e "\nUSE_GOMA := false\nBOARD_USE_VNDK_VERSION := current\nTARGET_MAX_EXE_OBJ_SIZE := 0xFFFFFF\nTW_SUPPORT_INPUT_1_2 := true\nTW_FILTER_TOUCH_EVENTS := true" >> $BOARD_CONFIG
 
     - name: Build PBRP
       run: |
@@ -65,27 +58,18 @@ jobs:
         cd pbrp
         export ALLOW_MISSING_DEPENDENCIES=true
         export _JAVA_OPTIONS="-Xmx4g"
-        
         source build/envsetup.sh
-        # Gunakan || true agar jika lunch pbrp gagal, dia coba twrp (beberapa tree hanya punya target twrp)
-        lunch pbrp_a05s-eng || lunch twrp_a05s-eng || echo "Lunch failed, check your target name!"
-        
+        lunch pbrp_a05s-eng || lunch twrp_a05s-eng
         mka pbrp -j2
 
-    - name: Upload to Telegram (Success)
+    - name: Upload to Telegram
       if: success()
       run: |
         cd pbrp/out/target/product/a05s/
         ZIP=$(ls PBRP*.zip | head -n 1)
-        IMG=$(ls recovery.img | head -n 1)
-        curl -F document=@"$ZIP" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=✅ PBRP Samsung A05s Sukses!"
-        if [ -f "$IMG" ]; then
-          curl -F document=@"$IMG" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=📄 Recovery Image (A05s)"
-        fi
+        curl -F document=@"$ZIP" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=✅ PBRP Build Sukses!"
 
-    - name: Notify on Failure
+    - name: Notify Failure
       if: failure()
       run: |
-        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
-        -d chat_id="${{ secrets.CHAT_ID }}" \
-        -d text="❌ Build PBRP Gagal! Periksa log GitHub Actions bagian Sync atau Build."
+        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" -d chat_id="${{ secrets.CHAT_ID }}" -d text="❌ Build Gagal!"
