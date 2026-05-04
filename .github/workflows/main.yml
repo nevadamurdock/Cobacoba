@@ -1,4 +1,4 @@
-name: PBRP Build Bypass Auth
+name: PBRP Build Optimized Final
 
 on:
   workflow_dispatch:
@@ -35,11 +35,8 @@ jobs:
         git config --global user.name "nevadamurdock"
         
         mkdir pbrp && cd pbrp
-        
-        # Menggunakan GitLab sebagai fallback utama karena GitHub sering minta auth interaktif
-        repo init --depth=1 -u https://gitlab.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify || \
+        # Menggunakan manifest resmi dengan mode stabil
         repo init --depth=1 -u https://github.com/PitchBlackRecoveryProject/manifest.git -b pbrp-12.1 --no-repo-verify
-        
         repo sync -c -j$(nproc --all) --force-sync --no-tags --no-clone-bundle --optimized-fetch --prune
 
     - name: Clone Device Tree
@@ -47,10 +44,31 @@ jobs:
         cd pbrp
         git clone https://github.com/nevadamurdock/android_device_samsung_a05s -b fox device/samsung/a05s
 
-    - name: Auto-Patch BoardConfig
+    - name: Auto-Patch PBRP Build Flags (Official Docs Standard)
       run: |
         BOARD_CONFIG="pbrp/device/samsung/a05s/BoardConfig.mk"
-        echo -e "\nUSE_GOMA := false\nBOARD_USE_VNDK_VERSION := current\nTARGET_MAX_EXE_OBJ_SIZE := 0xFFFFFF\nTW_SUPPORT_INPUT_1_2 := true\nTW_FILTER_TOUCH_EVENTS := true" >> $BOARD_CONFIG
+        echo "" >> $BOARD_CONFIG
+        echo "# --- PBRP Official Build Flags ---" >> $BOARD_CONFIG
+        echo "PB_OFFICIAL := false" >> $BOARD_CONFIG
+        echo "PB_DEVICE_MAINTAINER := \"Agus Tamvan\"" >> $BOARD_CONFIG
+        
+        # Flags dari dokumentasi PBRP untuk optimasi fungsional
+        echo "PB_DISABLE_DEFAULT_TREBLE_COMPATIBILITY := true" >> $BOARD_CONFIG
+        echo "PB_FORCE_EXTRACT_BINS := true" >> $BOARD_CONFIG
+        
+        # Flags Visual & Branding
+        echo "PB_RECOVERY_LOGO := \"device/samsung/a05s/pbrp.png\"" >> $BOARD_CONFIG
+        
+        # Penyesuaian Samsung A05s (OOM & VNDK)
+        echo "USE_GOMA := false" >> $BOARD_CONFIG
+        echo "BOARD_USE_VNDK_VERSION := current" >> $BOARD_CONFIG
+        echo "TARGET_MAX_EXE_OBJ_SIZE := 0xFFFFFF" >> $BOARD_CONFIG
+        
+        # Touchscreen Fix (Standard TWRP/PBRP)
+        echo "TW_INPUT_BLACKLIST := \"hbtp_vm\"" >> $BOARD_CONFIG
+        echo "TW_SUPPORT_INPUT_1_2 := true" >> $BOARD_CONFIG
+        echo "TW_FILTER_TOUCH_EVENTS := true" >> $BOARD_CONFIG
+        echo "Done applying PBRP standard flags."
 
     - name: Build PBRP
       run: |
@@ -67,9 +85,9 @@ jobs:
       run: |
         cd pbrp/out/target/product/a05s/
         ZIP=$(ls PBRP*.zip | head -n 1)
-        curl -F document=@"$ZIP" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=✅ PBRP Build Sukses!"
+        curl -F document=@"$ZIP" "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}&caption=✅ PBRP Build for A05s (m14ns) Complete!"
 
     - name: Notify Failure
       if: failure()
       run: |
-        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" -d chat_id="${{ secrets.CHAT_ID }}" -d text="❌ Build Gagal!"
+        curl -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" -d chat_id="${{ secrets.CHAT_ID }}" -d text="❌ Build PBRP Gagal! Cek log GitHub Actions."
