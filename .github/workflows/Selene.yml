@@ -1,4 +1,4 @@
-name: Build Kernel C-Selene Official KSU
+name: Build Hydrogen Kernel Selene
 on:
   workflow_dispatch:
 
@@ -9,7 +9,8 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: Ronald826/xiaomi_kernel_selene
+          repository: noticesax/hydrogen_kernel_xiaomi_selene
+          ref: Hydrogen
           fetch-depth: 1
 
       - name: Install Build Dependencies
@@ -24,7 +25,7 @@ jobs:
 
       - name: Ultimate Fix VDSO32 & Drvgen
         run: |
-          # Metode Nuklir: Lumpuhkan folder vdso32 sepenuhnya
+          # Lumpuhkan folder vdso32 sepenuhnya untuk menghindari error linker arm
           rm -rf arch/arm64/kernel/vdso32/*
           echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
           echo "all:" >> arch/arm64/kernel/vdso32/Makefile
@@ -33,8 +34,8 @@ jobs:
           # Hapus pemicu vdso_prepare di Makefile arm64
           sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
           
-          # Fix drvgen error
-          sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
+          # Fix drvgen error (biasanya terjadi di kernel MediaTek)
+          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
 
       - name: Integrate KernelSU (Official v0.9.5)
         run: |
@@ -42,6 +43,7 @@ jobs:
           
           KSU_DIR=$(find drivers -iname "KernelSU" -type d -print -quit || find drivers -iname "kernelsu" -type d -print -quit)
           
+          # Bypass pengecekan hook otomatis
           if [ -f "$KSU_DIR/Kbuild" ]; then
             sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Kbuild"
           fi
@@ -49,6 +51,7 @@ jobs:
             sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Makefile"
           fi
           
+          # Manual Hook Integration (Non-GKI 4.14)
           echo 'extern int ksu_handle_vfs_read(struct file **, char __user **, size_t *, loff_t *);' >> include/linux/fs.h
           echo 'extern int ksu_handle_vfs_write(struct file **, const char __user **, size_t *, loff_t *);' >> include/linux/fs.h
           echo 'extern int ksu_handle_sys_openat2(int *, const char __user **, int *, umode_t *);' >> include/linux/fs.h
@@ -71,10 +74,12 @@ jobs:
           export SUBARCH=arm64
           export PATH="$(pwd)/bin/clang/bin:$PATH"
           export KBUILD_BUILD_USER="Sam"
-          export KBUILD_BUILD_HOST="GusKernel"
+          export KBUILD_BUILD_HOST="Hydrogen"
           
-          make O=out ARCH=arm64 cselene_defconfig
+          # Menggunakan selene_defconfig sesuai permintaan
+          make O=out ARCH=arm64 selene_defconfig
           
+          # Injeksi konfigurasi final (KSU, SusFS, Kprobes)
           {
             echo "CONFIG_VDSO32=n"
             echo "CONFIG_KSU=y"
@@ -84,6 +89,7 @@ jobs:
             echo "CONFIG_KPROBES=y"
             echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
+            echo "CONFIG_DYNAMIC_FTRACE=y"
           } >> out/.config
           
           make O=out ARCH=arm64 olddefconfig
@@ -107,7 +113,7 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-CSelene-KSU-Final
+          name: Hydrogen-Kernel-Selene-KSU
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
