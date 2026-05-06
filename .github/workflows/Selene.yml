@@ -1,4 +1,4 @@
-name: Build Kernel Selene Final
+name: Build Kernel C-Selene Final
 on:
   workflow_dispatch:
 
@@ -24,8 +24,7 @@ jobs:
 
       - name: Fix Drvgen Error (Patch)
         run: |
-          # Perintah ini akan menambahkan '-' di depan perintah mv agar make mengabaikan jika mv gagal
-          # Dan memastikan file tmp dibuat jika belum ada agar perintah cmp tidak error
+          # Mengabaikan error mv pada drvgen.mk yang sering bikin build stuck di kernel MTK
           sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
 
       - name: Integrate KernelSU-Next
@@ -48,8 +47,8 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="GusKernel"
           
-          # 1. Buat defconfig awal
-          make O=out ARCH=arm64 selene_defconfig
+          # 1. Menggunakan cselene_defconfig sesuai permintaanmu
+          make O=out ARCH=arm64 cselene_defconfig
           
           # 2. Inject Konfigurasi KSU & SusFS
           echo "CONFIG_KSU=y" >> out/.config
@@ -84,7 +83,7 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Selene-KSU-SusFS
+          name: Kernel-CSelene-KSU-SusFS
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
