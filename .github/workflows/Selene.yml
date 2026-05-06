@@ -24,12 +24,23 @@ jobs:
 
       - name: Fix Drvgen Error (Patch)
         run: |
-          # Mengabaikan error mv pada drvgen.mk yang sering bikin build stuck di kernel MTK
           sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
 
       - name: Integrate KernelSU-Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          
+          # Manual Hook Integration untuk Kernel 4.14
+          # Menyuntikkan panggilam ksu di fs/read_write.c
+          sed -i '/ssize_t vfs_read(struct file/a \\nextern int ksu_handle_vfs_read(struct file **, char __user **, size_t *, loff_t *);' fs/read_write.c
+          sed -i '/if (!(file->f_mode & FMODE_READ))/a \\tksu_handle_vfs_read(&file, &buf, &count, pos);' fs/read_write.c
+          
+          sed -i '/ssize_t vfs_write(struct file/a \\nextern int ksu_handle_vfs_write(struct file **, const char __user **, size_t *, loff_t *);' fs/read_write.c
+          sed -i '/if (!(file->f_mode & FMODE_WRITE))/a \\tksu_handle_vfs_write(&file, &buf, &count, pos);' fs/read_write.c
+          
+          # Menyuntikkan panggilam ksu di fs/open.c
+          sed -i '/long do_sys_open(int dfd, const char __user \*filename, int flags, umode_t mode)/a \\nextern int ksu_handle_sys_openat2(int *dfd, const char __user **filename, int *flags, umode_t *mode);' fs/open.c
+          sed -i '/struct filename \*tmp = getname(filename);/a \\tksu_handle_sys_openat2(&dfd, &filename, &flags, &mode);' fs/open.c
 
       - name: Integrate SusFS
         run: |
@@ -47,10 +58,9 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="GusKernel"
           
-          # 1. Menggunakan cselene_defconfig sesuai permintaanmu
           make O=out ARCH=arm64 cselene_defconfig
           
-          # 2. Inject Konfigurasi KSU & SusFS
+          # Inject Konfigurasi
           echo "CONFIG_KSU=y" >> out/.config
           echo "CONFIG_KSU_NEXT=y" >> out/.config
           echo "CONFIG_SUSFS=y" >> out/.config
@@ -60,10 +70,8 @@ jobs:
           echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
           echo "CONFIG_DYNAMIC_FTRACE=y" >> out/.config
           
-          # 3. Sinkronisasi config
           make O=out ARCH=arm64 olddefconfig
           
-          # 4. Proses Kompilasi Utama
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
