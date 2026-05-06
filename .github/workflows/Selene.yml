@@ -4,7 +4,6 @@ on:
 
 jobs:
   build:
-    # Menggunakan Ubuntu 22.04 untuk stabilitas toolchain kernel 4.14
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
@@ -22,6 +21,12 @@ jobs:
         run: |
           mkdir -p bin/clang
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git bin/clang
+
+      - name: Fix Drvgen Error (Patch)
+        run: |
+          # Perintah ini akan menambahkan '-' di depan perintah mv agar make mengabaikan jika mv gagal
+          # Dan memastikan file tmp dibuat jika belum ada agar perintah cmp tidak error
+          sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
 
       - name: Integrate KernelSU-Next
         run: |
@@ -46,7 +51,7 @@ jobs:
           # 1. Buat defconfig awal
           make O=out ARCH=arm64 selene_defconfig
           
-          # 2. Inject Konfigurasi KSU & SusFS ke .config
+          # 2. Inject Konfigurasi KSU & SusFS
           echo "CONFIG_KSU=y" >> out/.config
           echo "CONFIG_KSU_NEXT=y" >> out/.config
           echo "CONFIG_SUSFS=y" >> out/.config
@@ -56,7 +61,7 @@ jobs:
           echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
           echo "CONFIG_DYNAMIC_FTRACE=y" >> out/.config
           
-          # 3. Sinkronisasi config (Olddefconfig) agar tidak stuck saat build
+          # 3. Sinkronisasi config
           make O=out ARCH=arm64 olddefconfig
           
           # 4. Proses Kompilasi Utama
