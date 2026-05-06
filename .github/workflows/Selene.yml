@@ -1,0 +1,77 @@
+name: Build Kernel Selene
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          repository: Ronald826/xiaomi_kernel_selene
+          fetch-depth: 1
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev clang-15
+
+      - name: Setup Clang
+        run: |
+          mkdir -p bin/clang
+          curl -LSs "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r522830.tar.gz" -o clang.tar.gz
+          tar -C bin/clang -xf clang.tar.gz
+          echo "$(pwd)/bin/clang/bin" >> $GITHUB_PATH
+
+      - name: Integrate KernelSU-Next
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
+      - name: Integrate SusFS
+        run: |
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
+          cp susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch .
+          cp susfs/kernel_patches/fs/* fs/
+          cp susfs/kernel_patches/include/linux/* include/linux/
+          patch -p1 < 50_add_susfs_in_kernel-4.14.patch
+
+      - name: Build Kernel
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$(pwd)/bin/clang/bin:$PATH"
+          
+          # Make Defconfig
+          make O=out ARCH=arm64 selene_defconfig
+          
+          # Enable KSU & SusFS requirements in defconfig
+          scripts/config --file out/.config \
+            -e CONFIG_KSU \
+            -e CONFIG_KSU_NEXT \
+            -e CONFIG_KSU_SUSFS \
+            -e CONFIG_SUSFS \
+            -e CONFIG_OVERLAY_FS \
+            -e CONFIG_KPROBES \
+            -e CONFIG_KPROBE_EVENTS \
+            -e CONFIG_DYNAMIC_FTRACE
+          
+          # Start Compiling
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Selene-KSU-Next
+          path: out/arch/arm64/boot/Image.gz-dtb
