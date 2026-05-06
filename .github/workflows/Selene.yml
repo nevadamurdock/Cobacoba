@@ -22,20 +22,21 @@ jobs:
           mkdir -p bin/clang
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git bin/clang
 
-      - name: Fix Drvgen & VDSO Error
+      - name: Hard Fix VDSO32 & Drvgen
         run: |
-          # Fix drvgen
+          # Matikan VDSO32 secara paksa di Makefile agar tidak disentuh compiler
+          sed -i 's/obj-$(CONFIG_VDSO32) += vdso32\///g' arch/arm64/kernel/Makefile
+          
+          # Fix drvgen error
           sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
-          # Fix VDSO32 linker error (Disable VDSO32)
-          sed -i 's/CONFIG_VDSO32=y/CONFIG_VDSO32=n/g' arch/arm64/configs/cselene_defconfig || true
-          echo "CONFIG_VDSO32=n" >> arch/arm64/configs/cselene_defconfig
 
       - name: Integrate KernelSU (Official v0.9.5)
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-          # Bypass pengecekan hook otomatis
           KSU_DIR=$(find drivers -iname "KernelSU" -type d -print -quit || find drivers -iname "kernelsu" -type d -print -quit)
+          
+          # Bypass pengecekan hook otomatis
           if [ -f "$KSU_DIR/Kbuild" ]; then
             sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Kbuild"
           fi
@@ -70,7 +71,7 @@ jobs:
           
           make O=out ARCH=arm64 cselene_defconfig
           
-          # Force Disable VDSO32 dan aktifkan KSU & KPROBES
+          # Injeksi konfigurasi final
           {
             echo "CONFIG_VDSO32=n"
             echo "CONFIG_KSU=y"
