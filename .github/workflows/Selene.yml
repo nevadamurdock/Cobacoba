@@ -4,7 +4,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Menggunakan 22.04 karena lebih kompatibel dengan toolchain kernel lama
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
@@ -15,7 +16,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14
 
       - name: Setup Toolchain (Proton Clang)
         run: |
@@ -38,14 +39,13 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
+          # Masukkan bin clang ke PATH
           export PATH="$(pwd)/bin/clang/bin:$PATH"
-          export KBUILD_BUILD_USER="Sam"
-          export KBUILD_BUILD_HOST="GusKernel-Build"
           
           # Gunakan defconfig selene
           make O=out ARCH=arm64 selene_defconfig
           
-          # Otomatis aktifkan fitur yang dibutuhkan KSU-Next dan SusFS
+          # Aktifkan fitur KSU & SusFS
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
@@ -57,10 +57,13 @@ jobs:
             -e CONFIG_DYNAMIC_FTRACE \
             -d CONFIG_KSU_DEBUG
           
-          # Mulai proses kompilasi
+          # Build dengan tambahan HOSTLDFLAGS untuk fix error linker
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
+            HOSTCC=clang \
+            HOSTCXX=clang++ \
+            HOSTLDFLAGS="-fuse-ld=lld" \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -74,7 +77,7 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Selene-KSU-Next-SusFS
+          name: Kernel-Selene-Final
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
