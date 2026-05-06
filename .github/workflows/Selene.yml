@@ -1,4 +1,4 @@
-name: Build Kernel Selene
+name: Build Kernel Selene (KSU-Next + SusFS)
 on:
   workflow_dispatch:
 
@@ -12,17 +12,15 @@ jobs:
           repository: Ronald826/xiaomi_kernel_selene
           fetch-depth: 1
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev clang-15
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev
 
-      - name: Setup Clang
+      - name: Setup Toolchain (Proton Clang)
         run: |
           mkdir -p bin/clang
-          curl -LSs "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r522830.tar.gz" -o clang.tar.gz
-          tar -C bin/clang -xf clang.tar.gz
-          echo "$(pwd)/bin/clang/bin" >> $GITHUB_PATH
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git bin/clang
 
       - name: Integrate KernelSU-Next
         run: |
@@ -41,11 +39,13 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/bin/clang/bin:$PATH"
+          export KBUILD_BUILD_USER="Sam"
+          export KBUILD_BUILD_HOST="GusKernel-Build"
           
-          # Make Defconfig
+          # Gunakan defconfig selene
           make O=out ARCH=arm64 selene_defconfig
           
-          # Enable KSU & SusFS requirements in defconfig
+          # Otomatis aktifkan fitur yang dibutuhkan KSU-Next dan SusFS
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
@@ -54,9 +54,10 @@ jobs:
             -e CONFIG_OVERLAY_FS \
             -e CONFIG_KPROBES \
             -e CONFIG_KPROBE_EVENTS \
-            -e CONFIG_DYNAMIC_FTRACE
+            -e CONFIG_DYNAMIC_FTRACE \
+            -d CONFIG_KSU_DEBUG
           
-          # Start Compiling
+          # Mulai proses kompilasi
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -70,8 +71,11 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip
 
-      - name: Upload Kernel Image
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Selene-KSU-Next
-          path: out/arch/arm64/boot/Image.gz-dtb
+          name: Kernel-Selene-KSU-Next-SusFS
+          path: |
+            out/arch/arm64/boot/Image.gz-dtb
+            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image
