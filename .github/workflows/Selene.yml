@@ -1,10 +1,10 @@
-name: Build Kernel Selene (KSU-Next + SusFS)
+name: Build Kernel Selene Final
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # Menggunakan 22.04 karena lebih kompatibel dengan toolchain kernel lama
+    # Menggunakan Ubuntu 22.04 untuk stabilitas toolchain kernel 4.14
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
@@ -39,25 +39,27 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          # Masukkan bin clang ke PATH
           export PATH="$(pwd)/bin/clang/bin:$PATH"
+          export KBUILD_BUILD_USER="Sam"
+          export KBUILD_BUILD_HOST="GusKernel"
           
-          # Gunakan defconfig selene
+          # 1. Buat defconfig awal
           make O=out ARCH=arm64 selene_defconfig
           
-          # Aktifkan fitur KSU & SusFS
-          scripts/config --file out/.config \
-            -e CONFIG_KSU \
-            -e CONFIG_KSU_NEXT \
-            -e CONFIG_KSU_SUSFS \
-            -e CONFIG_SUSFS \
-            -e CONFIG_OVERLAY_FS \
-            -e CONFIG_KPROBES \
-            -e CONFIG_KPROBE_EVENTS \
-            -e CONFIG_DYNAMIC_FTRACE \
-            -d CONFIG_KSU_DEBUG
+          # 2. Inject Konfigurasi KSU & SusFS ke .config
+          echo "CONFIG_KSU=y" >> out/.config
+          echo "CONFIG_KSU_NEXT=y" >> out/.config
+          echo "CONFIG_SUSFS=y" >> out/.config
+          echo "CONFIG_KSU_SUSFS=y" >> out/.config
+          echo "CONFIG_OVERLAY_FS=y" >> out/.config
+          echo "CONFIG_KPROBES=y" >> out/.config
+          echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
+          echo "CONFIG_DYNAMIC_FTRACE=y" >> out/.config
           
-          # Build dengan tambahan HOSTLDFLAGS untuk fix error linker
+          # 3. Sinkronisasi config (Olddefconfig) agar tidak stuck saat build
+          make O=out ARCH=arm64 olddefconfig
+          
+          # 4. Proses Kompilasi Utama
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -77,7 +79,7 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Selene-Final
+          name: Kernel-Selene-KSU-SusFS
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
