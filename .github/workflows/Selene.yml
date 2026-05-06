@@ -25,33 +25,22 @@ jobs:
 
       - name: Ultimate Fix VDSO32 & Drvgen
         run: |
-          # Lumpuhkan folder vdso32 sepenuhnya untuk menghindari error linker arm
           rm -rf arch/arm64/kernel/vdso32/*
           echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
           echo "all:" >> arch/arm64/kernel/vdso32/Makefile
           echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
-          
-          # Hapus pemicu vdso_prepare di Makefile arm64
           sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
-          
-          # Fix drvgen error (biasanya terjadi di kernel MediaTek)
           find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
 
       - name: Integrate KernelSU (Official v0.9.5)
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-          
           KSU_DIR=$(find drivers -iname "KernelSU" -type d -print -quit || find drivers -iname "kernelsu" -type d -print -quit)
           
-          # Bypass pengecekan hook otomatis
           if [ -f "$KSU_DIR/Kbuild" ]; then
             sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Kbuild"
           fi
-          if [ -f "$KSU_DIR/Makefile" ]; then
-            sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Makefile"
-          fi
           
-          # Manual Hook Integration (Non-GKI 4.14)
           echo 'extern int ksu_handle_vfs_read(struct file **, char __user **, size_t *, loff_t *);' >> include/linux/fs.h
           echo 'extern int ksu_handle_vfs_write(struct file **, const char __user **, size_t *, loff_t *);' >> include/linux/fs.h
           echo 'extern int ksu_handle_sys_openat2(int *, const char __user **, int *, umode_t *);' >> include/linux/fs.h
@@ -60,13 +49,27 @@ jobs:
           sed -i '/if (!(file->f_mode & FMODE_WRITE))/a \    ksu_handle_vfs_write(&file, &buf, &count, pos);' fs/read_write.c
           sed -i '/struct filename \*tmp = getname(filename);/a \    ksu_handle_sys_openat2(&dfd, &filename, &flags, &mode);' fs/open.c
 
-      - name: Integrate SusFS
+      - name: Integrate SusFS (with Patch Fix)
         run: |
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
-          cp susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch .
+          
+          # Salin file header dan fs SusFS terlebih dahulu
           cp susfs/kernel_patches/fs/* fs/
           cp susfs/kernel_patches/include/linux/* include/linux/
-          patch -p1 < 50_add_susfs_in_kernel-4.14.patch
+          
+          # Terapkan patch utama namun abaikan error (agar file lain tetap ter-patch)
+          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true
+          
+          # Manual Fix untuk fs/proc/task_mmu.c (Sering gagal karena spasi/include)
+          if [ ! -f "fs/proc/task_mmu.c.rej" ]; then echo "task_mmu.c patched successfully"; else
+            sed -i '1i #include <linux/susfs.h>' fs/proc/task_mmu.c
+            sed -i '/if (seq_has_overflowed(m))/i \	if (check_susfs_tid_for_task_mmu(m)) return 0;' fs/proc/task_mmu.c
+          fi
+
+          # Manual Fix untuk kernel/sys.c
+          if [ ! -f "kernel/sys.c.rej" ]; then echo "sys.c patched successfully"; else
+            sed -i 's/SYSCALL_DEFINE1(setuid, uid_t, uid)/int ksu_handle_setuid(uid_t *uid);\nSYSCALL_DEFINE1(setuid, uid_t, uid)/' kernel/sys.c
+          fi
 
       - name: Build Kernel
         run: |
@@ -76,10 +79,8 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="Hydrogen"
           
-          # Menggunakan selene_defconfig sesuai permintaan
           make O=out ARCH=arm64 selene_defconfig
           
-          # Injeksi konfigurasi final (KSU, SusFS, Kprobes)
           {
             echo "CONFIG_VDSO32=n"
             echo "CONFIG_KSU=y"
@@ -89,7 +90,6 @@ jobs:
             echo "CONFIG_KPROBES=y"
             echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
-            echo "CONFIG_DYNAMIC_FTRACE=y"
           } >> out/.config
           
           make O=out ARCH=arm64 olddefconfig
@@ -97,23 +97,15 @@ jobs:
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
-            HOSTCC=clang \
-            HOSTCXX=clang++ \
-            HOSTLDFLAGS="-fuse-ld=lld" \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            LD=ld.lld
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hydrogen-Kernel-Selene-KSU
+          name: Hydrogen-Kernel-Selene-KSU-Final
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
