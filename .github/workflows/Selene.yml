@@ -1,4 +1,4 @@
-name: Build Kernel C-Selene Final
+name: Build Kernel C-Selene Official KSU
 on:
   workflow_dispatch:
 
@@ -26,20 +26,26 @@ jobs:
         run: |
           sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' scripts/drvgen/drvgen.mk
 
-      - name: Integrate KernelSU-Next
+      - name: Integrate KernelSU (Official v0.9.5)
         run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          # Download KernelSU
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-          # Bypass pengecekan hook otomatis di Kbuild
-          sed -i 's/$(error -- KernelSU-Next: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU-Next: Manual hooks bypass applied./g' drivers/kernelsu/Kbuild
+          # Bypass pengecekan hook otomatis di Kbuild KSU
+          sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' drivers/kernelsu/Kbuild
           
-          # Inject deklarasi ke header fs agar terbaca secara global
+          # Manual Hook Integration (Sesuai panduan Non-GKI KernelSU)
+          # 1. Inject deklarasi ke include/linux/fs.h
           echo 'extern int ksu_handle_vfs_read(struct file **, char __user **, size_t *, loff_t *);' >> include/linux/fs.h
           echo 'extern int ksu_handle_vfs_write(struct file **, const char __user **, size_t *, loff_t *);' >> include/linux/fs.h
+          echo 'extern int ksu_handle_sys_openat2(int *, const char __user **, int *, umode_t *);' >> include/linux/fs.h
           
-          # Inject hooks ke fs/read_write.c
+          # 2. Inject hooks ke fs/read_write.c (vfs_read & vfs_write)
           sed -i '/if (!(file->f_mode & FMODE_READ))/a \    ksu_handle_vfs_read(&file, &buf, &count, pos);' fs/read_write.c
           sed -i '/if (!(file->f_mode & FMODE_WRITE))/a \    ksu_handle_vfs_write(&file, &buf, &count, pos);' fs/read_write.c
+          
+          # 3. Inject hooks ke fs/open.c (do_sys_open)
+          sed -i '/struct filename \*tmp = getname(filename);/a \    ksu_handle_sys_openat2(&dfd, &filename, &flags, &mode);' fs/open.c
 
       - name: Integrate SusFS
         run: |
@@ -59,14 +65,14 @@ jobs:
           
           make O=out ARCH=arm64 cselene_defconfig
           
-          # Paksa opsi KSU & SusFS ke .config
+          # Force opsi KSU, SusFS, dan KPROBES (Kebutuhan Non-GKI)
           {
             echo "CONFIG_KSU=y"
-            echo "CONFIG_KSU_NEXT=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
             echo "CONFIG_OVERLAY_FS=y"
             echo "CONFIG_KPROBES=y"
+            echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
             echo "CONFIG_DYNAMIC_FTRACE=y"
           } >> out/.config
@@ -92,7 +98,7 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-CSelene-Final
+          name: Kernel-CSelene-KSU-Official
           path: |
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
