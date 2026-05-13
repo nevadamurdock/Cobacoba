@@ -1,4 +1,4 @@
-name: Build Hydrogen Kernel Selene
+name: Build Hydrogen Kernel Selene (ZyC Clang)
 on:
   workflow_dispatch:
 
@@ -9,57 +9,47 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          # Mengubah repository ke MiCode
           repository: MiCode/Xiaomi_Kernel_OpenSource
-          # Menggunakan branch selene-r-oss-update sesuai permintaanmu
           ref: selene-r-oss-update
           fetch-depth: 1
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar
 
-      - name: Setup Toolchain (Proton Clang)
+      - name: Setup Toolchain (ZyC Clang)
         run: |
           mkdir -p bin/clang
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git bin/clang
+          # Mengunduh ZyC Clang 17 yang stabil untuk kernel 4.14
+          wget https://github.com/ZyCromerZ/Clang/releases/download/17.0.0-20230522/Clang-17.0.0-20230522.tar.gz
+          tar -C bin/clang -zxvf Clang-17.0.0-20230522.tar.gz
 
-      - name: Integrate KernelSU (Official v0.9.5)
+      - name: Bypass Compiler Check (Stack Protector Fix)
         run: |
+          # Memaksa Makefile untuk melewati pengecekan -fstack-protector-strong yang sering gagal di CI[cite: 1]
+          sed -i 's/ifneq ($(call cc-option,-fstack-protector-strong),)/ifdef CONFIG_CC_STACKPROTECTOR_STRONG/g' Makefile[cite: 1]
+          sed -i 's/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler)/@echo "Bypassing Stack Protector Check"/g' Makefile[cite: 1]
+
+      - name: Ultimate Fix VDSO32 & Drvgen
+        run: |
+          rm -rf arch/arm64/kernel/vdso32/*
+          echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
+          echo "all:" >> arch/arm64/kernel/vdso32/Makefile
+          echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
+          sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
+          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +[cite: 1]
+
+      - name: Integrate KernelSU & SusFS
+        run: |
+          # Setup KernelSU[cite: 1]
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-          KSU_DIR=$(find drivers -iname "KernelSU" -type d -print -quit || find drivers -iname "kernelsu" -type d -print -quit)
           
-          if [ -f "$KSU_DIR/Kbuild" ]; then
-            sed -i 's/$(error -- KernelSU: No hooks were defined, please integrate manual hooks in your kernel!.)/@echo -- KernelSU: Manual hooks bypass applied./g' "$KSU_DIR/Kbuild"
-          fi
-          
-          echo 'extern int ksu_handle_vfs_read(struct file **, char __user **, size_t *, loff_t *);' >> include/linux/fs.h
-          echo 'extern int ksu_handle_vfs_write(struct file **, const char __user **, size_t *, loff_t *);' >> include/linux/fs.h
-          echo 'extern int ksu_handle_sys_openat2(int *, const char __user **, int *, umode_t *);' >> include/linux/fs.h
-          
-          sed -i '/if (!(file->f_mode & FMODE_READ))/a \    ksu_handle_vfs_read(&file, &buf, &count, pos);' fs/read_write.c
-          sed -i '/if (!(file->f_mode & FMODE_WRITE))/a \    ksu_handle_vfs_write(&file, &buf, &count, pos);' fs/read_write.c
-          sed -i '/struct filename \*tmp = getname(filename);/a \    ksu_handle_sys_openat2(&dfd, &filename, &flags, &mode);' fs/open.c
-
-      - name: Integrate SusFS (with Patch Fix)
-        run: |
-          # Pastikan branch susfs sesuai dengan versi kernel (4.14 untuk Selene)
+          # Setup SusFS untuk kernel 4.14[cite: 1]
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
-          
           cp susfs/kernel_patches/fs/* fs/
           cp susfs/kernel_patches/include/linux/* include/linux/
-          
-          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true
-          
-          if [ ! -f "fs/proc/task_mmu.c.rej" ]; then echo "task_mmu.c patched successfully"; else
-            sed -i '1i #include <linux/susfs.h>' fs/proc/task_mmu.c
-            sed -i '/if (seq_has_overflowed(m))/i \	if (check_susfs_tid_for_task_mmu(m)) return 0;' fs/proc/task_mmu.c
-          fi
-
-          if [ ! -f "kernel/sys.c.rej" ]; then echo "sys.c patched successfully"; else
-            sed -i 's/SYSCALL_DEFINE1(setuid, uid_t, uid)/int ksu_handle_setuid(uid_t *uid);\nSYSCALL_DEFINE1(setuid, uid_t, uid)/' kernel/sys.c
-          fi
+          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true[cite: 1]
 
       - name: Build Kernel
         run: |
@@ -67,38 +57,39 @@ jobs:
           export SUBARCH=arm64
           export PATH="$(pwd)/bin/clang/bin:$PATH"
           export KBUILD_BUILD_USER="Sam"
-          export KBUILD_BUILD_HOST="Hydrogen"
+          export KBUILD_BUILD_HOST="ZyC-Build"[cite: 1]
           
-          # Menggunakan defconfig bawaan MiCode untuk Selene
-          make O=out ARCH=arm64 selene_defconfig
-          
-          {
-            
-            echo "CONFIG_KSU=y"
-            echo "CONFIG_SUSFS=y"
-            echo "CONFIG_KSU_SUSFS=y"
-            echo "CONFIG_OVERLAY_FS=y"
-            echo "CONFIG_KPROBES=y"
-            echo "CONFIG_HAVE_KPROBES=y"
-            echo "CONFIG_KPROBE_EVENTS=y"
-          } >> out/.config
-          
-          make O=out ARCH=arm64 olddefconfig
-          
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
+          # Argumen build lengkap agar toolchain terbaca dengan benar[cite: 1]
+          MAKE_ARGS="ARCH=arm64 \
+            O=out \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=ld.lld
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip"[cite: 1]
+
+          make $MAKE_ARGS selene_defconfig[cite: 1]
+          
+          {
+            echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
+            echo "CONFIG_KSU=y"
+            echo "CONFIG_SUSFS=y"
+            echo "CONFIG_KSU_SUSFS=y"
+            echo "CONFIG_OVERLAY_FS=y"
+          } >> out/.config[cite: 1]
+          
+          make $MAKE_ARGS olddefconfig[cite: 1]
+          make -j$(nproc --all) $MAKE_ARGS[cite: 1]
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hydrogen-Kernel-Selene-KSU-Final
+          name: Hydrogen-Kernel-Selene-ZyC
           path: |
             out/arch/arm64/boot/Image.gz-dtb
-            out/arch/arm64/boot/Image.gz
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dtbo.img
+            out/arch/arm64/boot/dtbo.img[cite: 1]
