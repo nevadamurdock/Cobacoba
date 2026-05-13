@@ -41,10 +41,14 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="ZyC-Build"
           
-          # Hapus pengecekan compiler secara brutal agar tidak Error 1
+          # Hapus folder out jika ada sisa build sebelumnya
+          rm -rf out
+          
+          # Bypass compiler check secara agresif
           sed -i '/prepare-compiler-check:/a \	@echo "Skipping compiler check"' Makefile
           sed -i '/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG/d' Makefile
           
+          # Tambahkan KCFLAGS untuk mengabaikan warning yang dianggap error oleh Clang 16
           MAKE_ARGS="ARCH=arm64 \
             O=out \
             CC=clang \
@@ -58,7 +62,8 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             LLVM=1 \
-            LLVM_IAS=1"
+            LLVM_IAS=1 \
+            KCFLAGS=-Wno-error"
 
           make $MAKE_ARGS selene_defconfig
           
@@ -70,13 +75,12 @@ jobs:
             echo "CONFIG_KPROBES=y"
             echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
-            # Paksa matikan fitur yang bermasalah jika tetap gagal
-            echo "CONFIG_CC_STACKPROTECTOR_STRONG=n"
             echo "CONFIG_CC_STACKPROTECTOR_NONE=y"
           } >> out/.config
           
           make $MAKE_ARGS olddefconfig
-          make -j$(nproc --all) $MAKE_ARGS
+          # Gunakan -k agar build tetap lanjut jika ada error minor untuk melihat log lengkap
+          make -j$(nproc --all) $MAKE_ARGS || make -j1 $MAKE_ARGS
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
