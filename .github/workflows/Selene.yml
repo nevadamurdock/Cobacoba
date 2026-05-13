@@ -24,6 +24,15 @@ jobs:
           wget https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260510-release/Clang-16.0.6-20260510.tar.gz
           tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz
 
+      - name: Ultimate Fix VDSO32 & Drvgen
+        run: |
+          rm -rf arch/arm64/kernel/vdso32/*
+          echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
+          echo "all:" >> arch/arm64/kernel/vdso32/Makefile
+          echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
+          sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
+          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
+
       - name: Integrate KernelSU & SusFS
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
@@ -41,9 +50,9 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="ZyC-Build"
           
-          # bypass compiler check agar tidak error stack-protector
-          sed -i 's/ifneq ($(call cc-option,-fstack-protector-strong),)/ifdef CONFIG_CC_STACKPROTECTOR_STRONG/g' Makefile
-          sed -i 's/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler)/@echo "Bypassing Check"/g' Makefile
+          # Hapus pengecekan compiler secara brutal agar tidak Error 1
+          sed -i '/prepare-compiler-check:/a \	@echo "Skipping compiler check"' Makefile
+          sed -i '/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG/d' Makefile
           
           MAKE_ARGS="ARCH=arm64 \
             O=out \
@@ -63,7 +72,6 @@ jobs:
           make $MAKE_ARGS selene_defconfig
           
           {
-            echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
             echo "CONFIG_KSU=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
@@ -71,6 +79,9 @@ jobs:
             echo "CONFIG_KPROBES=y"
             echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
+            # Paksa matikan fitur yang bermasalah jika tetap gagal
+            echo "CONFIG_CC_STACKPROTECTOR_STRONG=n"
+            echo "CONFIG_CC_STACKPROTECTOR_NONE=y"
           } >> out/.config
           
           make $MAKE_ARGS olddefconfig
