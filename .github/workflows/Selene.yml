@@ -9,8 +9,10 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: noticesax/hydrogen_kernel_xiaomi_selene
-          ref: Hydrogen
+          # Mengubah repository ke MiCode
+          repository: MiCode/Xiaomi_Kernel_OpenSource
+          # Menggunakan branch selene-r-oss-update sesuai permintaanmu
+          ref: selene-r-oss-update
           fetch-depth: 1
 
       - name: Install Build Dependencies
@@ -22,15 +24,6 @@ jobs:
         run: |
           mkdir -p bin/clang
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git bin/clang
-
-      - name: Ultimate Fix VDSO32 & Drvgen
-        run: |
-          rm -rf arch/arm64/kernel/vdso32/*
-          echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
-          echo "all:" >> arch/arm64/kernel/vdso32/Makefile
-          echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
-          sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
-          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
 
       - name: Integrate KernelSU (Official v0.9.5)
         run: |
@@ -51,22 +44,19 @@ jobs:
 
       - name: Integrate SusFS (with Patch Fix)
         run: |
+          # Pastikan branch susfs sesuai dengan versi kernel (4.14 untuk Selene)
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
           
-          # Salin file header dan fs SusFS terlebih dahulu
           cp susfs/kernel_patches/fs/* fs/
           cp susfs/kernel_patches/include/linux/* include/linux/
           
-          # Terapkan patch utama namun abaikan error (agar file lain tetap ter-patch)
           patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true
           
-          # Manual Fix untuk fs/proc/task_mmu.c (Sering gagal karena spasi/include)
           if [ ! -f "fs/proc/task_mmu.c.rej" ]; then echo "task_mmu.c patched successfully"; else
             sed -i '1i #include <linux/susfs.h>' fs/proc/task_mmu.c
             sed -i '/if (seq_has_overflowed(m))/i \	if (check_susfs_tid_for_task_mmu(m)) return 0;' fs/proc/task_mmu.c
           fi
 
-          # Manual Fix untuk kernel/sys.c
           if [ ! -f "kernel/sys.c.rej" ]; then echo "sys.c patched successfully"; else
             sed -i 's/SYSCALL_DEFINE1(setuid, uid_t, uid)/int ksu_handle_setuid(uid_t *uid);\nSYSCALL_DEFINE1(setuid, uid_t, uid)/' kernel/sys.c
           fi
@@ -79,10 +69,11 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="Hydrogen"
           
+          # Menggunakan defconfig bawaan MiCode untuk Selene
           make O=out ARCH=arm64 selene_defconfig
           
           {
-            echo "CONFIG_VDSO32=n"
+            
             echo "CONFIG_KSU=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
