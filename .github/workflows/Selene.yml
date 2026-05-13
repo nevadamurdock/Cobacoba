@@ -16,41 +16,41 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar[cite: 1]
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar
 
       - name: Setup Toolchain (ZyC Clang 16)
         run: |
           mkdir -p bin/clang
-          # Mengunduh ZyC Clang 16 (Rilis Mei 2026)[cite: 1]
+          # Mengunduh ZyC Clang 16 (Rilis Mei 2026)
           wget https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260510-release/Clang-16.0.6-20260510.tar.gz
-          tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz[cite: 1]
+          tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz
 
       - name: Bypass Compiler Check (Stack Protector Fix)
         run: |
-          # Memaksa Makefile untuk melewati pengecekan -fstack-protector-strong yang sering gagal di CI[cite: 1]
-          sed -i 's/ifneq ($(call cc-option,-fstack-protector-strong),)/ifdef CONFIG_CC_STACKPROTECTOR_STRONG/g' Makefile[cite: 1]
-          sed -i 's/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler)/@echo "Bypassing Stack Protector Check"/g' Makefile[cite: 1]
+          # Memaksa Makefile untuk melewati pengecekan -fstack-protector-strong yang sering gagal di CI
+          sed -i 's/ifneq ($(call cc-option,-fstack-protector-strong),)/ifdef CONFIG_CC_STACKPROTECTOR_STRONG/g' Makefile
+          sed -i 's/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler)/@echo "Bypassing Stack Protector Check"/g' Makefile
 
       - name: Ultimate Fix VDSO32 & Drvgen
         run: |
-          # Perbaikan khusus untuk build kernel Xiaomi/MediaTek[cite: 1]
+          # Perbaikan khusus untuk build kernel Xiaomi/MediaTek
           rm -rf arch/arm64/kernel/vdso32/*
           echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
           echo "all:" >> arch/arm64/kernel/vdso32/Makefile
           echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
           sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
-          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +[cite: 1]
+          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
 
       - name: Integrate KernelSU & SusFS
         run: |
-          # Integrasi KernelSU Official[cite: 1]
+          # Integrasi KernelSU Official
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-          # Integrasi SusFS (Branch 4.14 sesuai base kernel Selene)[cite: 1]
+          # Integrasi SusFS (Branch 4.14 sesuai base kernel Selene)
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
           cp susfs/kernel_patches/fs/* fs/
           cp susfs/kernel_patches/include/linux/* include/linux/
-          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true[cite: 1]
+          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true
 
       - name: Build Kernel
         run: |
@@ -58,9 +58,9 @@ jobs:
           export SUBARCH=arm64
           export PATH="$(pwd)/bin/clang/bin:$PATH"
           export KBUILD_BUILD_USER="Sam"
-          export KBUILD_BUILD_HOST="ZyC-Build"[cite: 1]
+          export KBUILD_BUILD_HOST="ZyC-Build"
           
-          # Argumen build lengkap menggunakan LLVM=1 agar toolchain ZyC terbaca maksimal[cite: 1]
+          # Argumen build lengkap menggunakan LLVM=1 agar toolchain ZyC terbaca maksimal
           MAKE_ARGS="ARCH=arm64 \
             O=out \
             CC=clang \
@@ -74,12 +74,12 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             LLVM=1 \
-            LLVM_IAS=1"[cite: 1]
+            LLVM_IAS=1"
 
-          # Konfigurasi Defconfig[cite: 1]
-          make $MAKE_ARGS selene_defconfig[cite: 1]
+          # Konfigurasi Defconfig
+          make $MAKE_ARGS selene_defconfig
           
-          # Menambahkan konfigurasi fitur ke .config[cite: 1]
+          # Menambahkan konfigurasi fitur ke .config
           {
             echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
             echo "CONFIG_KSU=y"
@@ -89,11 +89,11 @@ jobs:
             echo "CONFIG_KPROBES=y"
             echo "CONFIG_HAVE_KPROBES=y"
             echo "CONFIG_KPROBE_EVENTS=y"
-          } >> out/.config[cite: 1]
+          } >> out/.config
           
-          # Proses build akhir[cite: 1]
-          make $MAKE_ARGS olddefconfig[cite: 1]
-          make -j$(nproc --all) $MAKE_ARGS[cite: 1]
+          # Proses build akhir
+          make $MAKE_ARGS olddefconfig
+          make -j$(nproc --all) $MAKE_ARGS
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
@@ -103,4 +103,4 @@ jobs:
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/Image.gz
             out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dtbo.img[cite: 1]
+            out/arch/arm64/boot/dtbo.img
