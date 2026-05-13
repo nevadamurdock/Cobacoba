@@ -1,4 +1,4 @@
-name: Build Hydrogen Kernel Selene (ZyC Clang)
+name: Build Hydrogen Kernel Selene (ZyC Clang 16)
 on:
   workflow_dispatch:
 
@@ -16,14 +16,14 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar
+          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar[cite: 1]
 
-      - name: Setup Toolchain (ZyC Clang 23)
+      - name: Setup Toolchain (ZyC Clang 16)
         run: |
           mkdir -p bin/clang
-          # Mengunduh langsung file binary dari release ZyC Clang 23
-          wget https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130-release.tar.gz
-          tar -C bin/clang -zxvf Clang-23.0.0git-20260130-release.tar.gz
+          # Mengunduh ZyC Clang 16 (Rilis Mei 2026)[cite: 1]
+          wget https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260510-release/Clang-16.0.6-20260510.tar.gz
+          tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz[cite: 1]
 
       - name: Bypass Compiler Check (Stack Protector Fix)
         run: |
@@ -33,6 +33,7 @@ jobs:
 
       - name: Ultimate Fix VDSO32 & Drvgen
         run: |
+          # Perbaikan khusus untuk build kernel Xiaomi/MediaTek[cite: 1]
           rm -rf arch/arm64/kernel/vdso32/*
           echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
           echo "all:" >> arch/arm64/kernel/vdso32/Makefile
@@ -42,10 +43,10 @@ jobs:
 
       - name: Integrate KernelSU & SusFS
         run: |
-          # Setup KernelSU[cite: 1]
+          # Integrasi KernelSU Official[cite: 1]
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-          # Setup SusFS untuk kernel 4.14[cite: 1]
+          # Integrasi SusFS (Branch 4.14 sesuai base kernel Selene)[cite: 1]
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
           cp susfs/kernel_patches/fs/* fs/
           cp susfs/kernel_patches/include/linux/* include/linux/
@@ -59,7 +60,7 @@ jobs:
           export KBUILD_BUILD_USER="Sam"
           export KBUILD_BUILD_HOST="ZyC-Build"[cite: 1]
           
-          # Argumen build lengkap agar toolchain terbaca dengan benar[cite: 1]
+          # Argumen build lengkap menggunakan LLVM=1 agar toolchain ZyC terbaca maksimal[cite: 1]
           MAKE_ARGS="ARCH=arm64 \
             O=out \
             CC=clang \
@@ -71,25 +72,35 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip"[cite: 1]
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1"[cite: 1]
 
+          # Konfigurasi Defconfig[cite: 1]
           make $MAKE_ARGS selene_defconfig[cite: 1]
           
+          # Menambahkan konfigurasi fitur ke .config[cite: 1]
           {
             echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
             echo "CONFIG_KSU=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
             echo "CONFIG_OVERLAY_FS=y"
+            echo "CONFIG_KPROBES=y"
+            echo "CONFIG_HAVE_KPROBES=y"
+            echo "CONFIG_KPROBE_EVENTS=y"
           } >> out/.config[cite: 1]
           
+          # Proses build akhir[cite: 1]
           make $MAKE_ARGS olddefconfig[cite: 1]
           make -j$(nproc --all) $MAKE_ARGS[cite: 1]
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hydrogen-Kernel-Selene-ZyC
+          name: Hydrogen-Kernel-Selene-ZyC-Final
           path: |
             out/arch/arm64/boot/Image.gz-dtb
+            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image
             out/arch/arm64/boot/dtbo.img[cite: 1]
