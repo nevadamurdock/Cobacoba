@@ -24,15 +24,6 @@ jobs:
           wget https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260510-release/Clang-16.0.6-20260510.tar.gz
           tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz
 
-      - name: Ultimate Fix VDSO32 & Drvgen
-        run: |
-          rm -rf arch/arm64/kernel/vdso32/*
-          echo "obj-y :=" > arch/arm64/kernel/vdso32/Makefile
-          echo "all:" >> arch/arm64/kernel/vdso32/Makefile
-          echo "clean:" >> arch/arm64/kernel/vdso32/Makefile
-          sed -i 's/prepare: vdso_prepare/prepare:/g' arch/arm64/Makefile || true
-          find scripts/drvgen/ -name "*.mk" -exec sed -i 's/mv dtboimg.cfg.tmp dtboimg.cfg/-mv dtboimg.cfg.tmp dtboimg.cfg/g' {} +
-
       - name: Integrate KernelSU & SusFS
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
