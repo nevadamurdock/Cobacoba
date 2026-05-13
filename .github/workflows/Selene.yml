@@ -18,12 +18,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar
 
-      - name: Setup Toolchain (ZyC Clang)
+      - name: Setup Toolchain (ZyC Clang 23)
         run: |
           mkdir -p bin/clang
-          # Mengunduh ZyC Clang 17 yang stabil untuk kernel 4.14
-          wget https://github.com/ZyCromerZ/Clang/releases/download/17.0.0-20230522/Clang-17.0.0-20230522.tar.gz
-          tar -C bin/clang -zxvf Clang-17.0.0-20230522.tar.gz
+          # Mengunduh langsung file binary dari release ZyC Clang 23
+          wget https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130-release.tar.gz
+          tar -C bin/clang -zxvf Clang-23.0.0git-20260130-release.tar.gz
 
       - name: Bypass Compiler Check (Stack Protector Fix)
         run: |
