@@ -103,6 +103,9 @@ jobs:
           DEFCONFIG_PATH="arch/arm64/configs/selene_defconfig"
           
           echo "" >> $DEFCONFIG_PATH
+          # 1. Ganti nama LOCALVERSION bawaan menjadi nama baru pilihanmu
+          # Perintah ini mendeteksi CONFIG_LOCALVERSION apa pun yang ada dan menggantinya
+          sed -i 's/CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="-Ngentot"/' arch/arm64/configs/selene_defconfig
           
           # Sakelar Utama KernelSU
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
@@ -122,6 +125,8 @@ jobs:
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG_PATH
 
+          echo "[✓] Nama kernel berhasil diubah dan konfigurasi KSU/SUSFS siap!"
+          
       - name: Proses Kompilasi Kernel
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
