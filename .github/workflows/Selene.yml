@@ -15,6 +15,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Pasang Dependensi Sistem & Link Python2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip python-is-python3
+          sudo ln -sf /usr/bin/python3 /usr/bin/python2
+          
       - name: Setup Lingkungan Kerja & Dependensi
         run: |
           sudo apt-get update
