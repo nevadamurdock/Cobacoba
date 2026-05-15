@@ -85,11 +85,14 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Gunakan flag tambahan untuk mengabaikan warning deprecation OpenSSL 3.0
+          # Flag untuk mengabaikan warning deprecation OpenSSL 3.0 pada host
           export HOSTCFLAGS="-Wno-deprecated-declarations"
           export HOSTCXXFLAGS="-Wno-deprecated-declarations"
           
-          make O=out selene_defconfig
+          # Generasi konfigurasi awal menggunakan linker host sistem untuk mencegah konflik relr.dyn
+          make O=out selene_defconfig HOSTLD=/usr/bin/ld
+          
+          # Eksekusi kompilasi utama dengan memaksa HOSTLD menggunakan linker lokal Ubuntu
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -100,6 +103,7 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
+            HOSTLD=/usr/bin/ld \
             HOSTCFLAGS="-Wno-deprecated-declarations" \
             HOSTCXXFLAGS="-Wno-deprecated-declarations"
             
