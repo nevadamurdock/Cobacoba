@@ -87,18 +87,16 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Brutal Fix: Suntik pragma langsung ke file extract-cert.c agar mengabaikan warning deprecation & mematikan Werror khusus file ini
-          if [ -f "scripts/extract-cert.c" ]; then
-            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n#pragma GCC diagnostic ignored "-Werror"\n/' scripts/extract-cert.c
-          fi
-          
-          # Hapus sisa-sisa build out sebelumnya jika ada agar bersih kembali
+          # Hapus sisa build out sebelumnya agar bersih total
           rm -rf out
+          
+          # Bersihkan perubahan pragma lama pada file jika ada
+          git checkout -- scripts/extract-cert.c || true
           
           # Generasi konfigurasi defconfig
           make O=out selene_defconfig
           
-          # Eksekusi kompilasi penuh
+          # Eksekusi kompilasi penuh dengan mematikan Werror secara global pada skrip host
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -108,7 +106,9 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            STRIP=llvm-strip \
+            HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error"
             
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
