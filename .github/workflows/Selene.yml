@@ -47,18 +47,7 @@ jobs:
       - name: Clone Source Kernel
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
-
-      - name: Tambah Patch Python3 Compatibility ke Script MTK
-        run: |
-          cd $GITHUB_WORKSPACE/kernel-source
-          if [ -f "scripts/dtc/libfdt/mkdtboimg.py" ]; then
-            echo "Memasang patch Python 3 untuk mkdtboimg.py..."
-            sed -i '/import sys/a if sys.version_info >= (3, 0):\n    xrange = range' scripts/dtc/libfdt/mkdtboimg.py
-            echo "[✓] Patch mkdtboimg.py berhasil diterapkan."
-          else
-            echo "[!] Peringatan: Berkas mkdtboimg.py tidak ditemukan di jalur standar."
-          fi
-          
+  
       - name: Integrasi KernelSU (backslashxx Hookless)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
