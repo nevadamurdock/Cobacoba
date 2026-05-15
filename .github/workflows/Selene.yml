@@ -85,6 +85,10 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
+          # Gunakan flag tambahan untuk mengabaikan warning deprecation OpenSSL 3.0
+          export HOSTCFLAGS="-Wno-deprecated-declarations"
+          export HOSTCXXFLAGS="-Wno-deprecated-declarations"
+          
           make O=out selene_defconfig
           make -j$(nproc --all) O=out \
             CC=clang \
@@ -95,8 +99,10 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
-
+            STRIP=llvm-strip \
+            HOSTCFLAGS="-Wno-deprecated-declarations" \
+            HOSTCXXFLAGS="-Wno-deprecated-declarations"
+            
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
           cd $GITHUB_WORKSPACE
