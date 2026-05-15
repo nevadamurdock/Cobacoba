@@ -87,14 +87,18 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Flag untuk mengabaikan warning deprecation OpenSSL 3.0 pada host Ubuntu 24.04
-          export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
-          export HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error"
+          # Brutal Fix: Suntik pragma langsung ke file extract-cert.c agar mengabaikan warning deprecation & mematikan Werror khusus file ini
+          if [ -f "scripts/extract-cert.c" ]; then
+            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n#pragma GCC diagnostic ignored "-Werror"\n/' scripts/extract-cert.c
+          fi
+          
+          # Hapus sisa-sisa build out sebelumnya jika ada agar bersih kembali
+          rm -rf out
           
           # Generasi konfigurasi defconfig
           make O=out selene_defconfig
           
-          # Eksekusi ekstraksi kompilasi penuh
+          # Eksekusi kompilasi penuh
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
