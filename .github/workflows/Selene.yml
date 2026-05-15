@@ -6,7 +6,7 @@ on:
       KERNEL_BRANCH:
         description: 'Cabang (Branch) Source Kernel'
         required: true
-        default: 'master'
+        default: 'lineage-20' # <-- Sudah diubah ke lineage-20
 
 env:
   TZ: Asia/Jakarta
@@ -39,17 +39,14 @@ jobs:
           git clone -b kernel-4.14 https://gitlab.com/simonpunk/susfs4ksu.git susfs
           
           cd $GITHUB_WORKSPACE/kernel-source
-          # Menyalin file utama SUSFS ke dalam source tree kernel
           cp $GITHUB_WORKSPACE/susfs/kernel/fs/susfs.c fs/
           cp $GITHUB_WORKSPACE/susfs/kernel/include/linux/susfs.h include/linux/
           
-          # Menerapkan patch spesifik untuk struktur kernel 4.14 jika tersedia
           OS_PATCH=$(find $GITHUB_WORKSPACE/susfs/Kernel_Patches/ -name "*4.14*.patch" | head -n 1)
           if [ ! -z "$OS_PATCH" ]; then
             patch -p1 < "$OS_PATCH" || echo "Patch kernel otomatis dilewati atau disesuaikan secara manual."
           fi
           
-          # Menerapkan patch SUSFS ke dalam direktori KernelSU-Next
           cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
           KSU_PATCH=$(find $GITHUB_WORKSPACE/susfs/KernelSU_Patches/ -name "*Next*.patch" | head -n 1)
           if [ ! -z "$KSU_PATCH" ]; then
@@ -98,18 +95,15 @@ jobs:
           cd $GITHUB_WORKSPACE
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           
-          # Modifikasi skrip AnyKernel3 agar kompatibel dengan non-GKI selene
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
           sed -i 's/block=\/dev\/block\/bootdevice\/by-name\/boot/block=auto/g' AnyKernel3/anykernel.sh
           
-          # Memindahkan output kernel image ke AnyKernel
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/zImage
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/zImage
           fi
           
-          # Menyertakan berkas DTB jika terkompilasi secara terpisah
           if [ -f kernel-source/out/arch/arm64/boot/dtb ]; then
             cp kernel-source/out/arch/arm64/boot/dtb AnyKernel3/dtb
           fi
