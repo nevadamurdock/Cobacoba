@@ -30,11 +30,13 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
 
-      - name: Integrasi KernelSU-Next (Legacy)
+      - name: Integrasi KernelSU (backslashxx Hookless)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-
+          
+          # Clone langsung repositori backslashxx ke folder drivers/kernelsu
+          git clone --depth=1 -b master https://github.com/backslashxx/KernelSU.git drivers/kernelsu
+          
       - name: Integrasi SUSFS Patches (Kernel 4.14)
         run: |
           cd $GITHUB_WORKSPACE
@@ -53,35 +55,29 @@ jobs:
           
           # 3. Terapkan patch utama SUSFS untuk Kernel 4.14
           if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch" ]; then
-            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Patch kernel 4.14 otomatis dilewati."
+            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch
           fi
           
-          # 4. Modifikasi Kode Manual KSU-Next agar Mengenal SUSFS (Menggantikan 10_enable_susfs_for_ksu.patch)
+          # 4. Terapkan patch SUSFS ke dalam direktori KernelSU backslashxx
           cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
-          
-          # Suntik deklarasi SUSFS ke berkas ksu.c internal milik KSU-Next
-          if [ -f "ksu.c" ]; then
-            sed -i '/extern int ksu_handle_open/a #ifdef CONFIG_KSU_SUSFS\nextern void susfs_init(void);\n#endif' ksu.c
-            sed -i '/ksu_core_init();/a #ifdef CONFIG_KSU_SUSFS\n\tsusfs_init();\n#endif' ksu.c
+          if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
           fi
           
-          # Tambahkan hooks pelacak ekstensi biner pada sys.c atau ksu.c jika diperlukan
-          # Langkah ini memaksa integrasi simbol SUSFS masuk ke dalam sistem build KSU-Next
-          echo "ccflags-y += -DCONFIG_KSU_SUSFS" >> Makefile
-          
-      - name: Injeksi Konfigurasi KSU & SUSFS ke Defconfig
+      - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           DEFCONFIG_PATH="arch/arm64/configs/selene_defconfig"
           
-          # Bersihkan sisa baris kosong di akhir berkas
           echo "" >> $DEFCONFIG_PATH
           
-          # Tambahkan konfigurasi KernelSU-Next Non-GKI
+          # Sakelar Utama KernelSU
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
-          echo "CONFIG_KSU_MANUAL_HOOKS=y" >> $DEFCONFIG_PATH
           
-          # Tambahkan konfigurasi SUSFS Engine
+          # AKTIFKAN FITUR HOOKLESS (Syscall Table Tampering)
+          echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> $DEFCONFIG_PATH
+          
+          # Konfigurasi SUSFS Engine
           echo "CONFIG_SU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
