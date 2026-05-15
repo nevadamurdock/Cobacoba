@@ -61,21 +61,19 @@ jobs:
           # CATATAN: Langkah penambalan 10_enable_susfs_for_ksu.patch SENGAJA DIHAPUS 
           # karena konflik struktur kode pada varian KSU Hookless backslashxx.
 
-      - name: Integrasi Jalur Tambahan KernelSU & SUSFS
+      - name: Unduh dan Setup KernelSU Hookless (backslashxx)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
+          rm -rf drivers/kernelsu
+          git clone https://github.com/backslashxx/KernelSU.git drivers/kernelsu
+          mv drivers/kernelsu/kernel/* drivers/kernelsu/
           
-          # 1. Pastikan drivers/Makefile membaca folder kernelsu jika belum terdaftar
           if ! grep -q "kernelsu" drivers/Makefile; then
             echo "obj-y += kernelsu/" >> drivers/Makefile
-            echo "[✓] Jalur KernelSU berhasil didaftarkan ke drivers/Makefile"
           fi
-          
-          # 2. Pastikan fs/Makefile membaca berkas susfs jika belum terdaftar
-          if ! grep -q "susfs" fs/Makefile; then
-            echo "obj-y += susfs.o" >> fs/Makefile
-            echo "[✓] Jalur SUSFS berhasil didaftarkan ke fs/Makefile"
-          fi    
+          if ! grep -q "kernelsu" drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          fi
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
