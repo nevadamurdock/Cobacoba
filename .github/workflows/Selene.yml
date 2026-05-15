@@ -15,22 +15,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Pasang Dependensi Sistem & Tambah Patch Python3 Compatibility
+      - name: Pasang Dependensi Sistem & Link Python2
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip python-is-python3
-          
-          # Membuat symlink agar python2 merujuk ke python3
           sudo ln -sf /usr/bin/python3 /usr/bin/python2
-          
-          cd $GITHUB_WORKSPACE/kernel-source
-          
-          # KUNCI UTAMA: Suntik baris kode agar Python 3 mengenali 'xrange' sebagai 'range'
-          # Kita masukkan tepat di bawah baris '#!/usr/bin/env python' pada skrip mkdtboimg.py
-          if [ -f "scripts/dtc/libfdt/mkdtboimg.py" ]; then
-            echo "Memasang patch Python 3 untuk mkdtboimg.py..."
-            sed -i '/import sys/a if sys.version_info >= (3, 0):\n    xrange = range' scripts/dtc/libfdt/mkdtboimg.py
-          fi
+          echo "[✓] Lingkungan Python siap digunakan."
           
       - name: Setup Lingkungan Kerja & Dependensi
         run: |
@@ -47,6 +37,17 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
 
+      - name: Tambah Patch Python3 Compatibility ke Script MTK
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          if [ -f "scripts/dtc/libfdt/mkdtboimg.py" ]; then
+            echo "Memasang patch Python 3 untuk mkdtboimg.py..."
+            sed -i '/import sys/a if sys.version_info >= (3, 0):\n    xrange = range' scripts/dtc/libfdt/mkdtboimg.py
+            echo "[✓] Patch mkdtboimg.py berhasil diterapkan."
+          else
+            echo "[!] Peringatan: Berkas mkdtboimg.py tidak ditemukan di jalur standar."
+          fi
+          
       - name: Integrasi KernelSU (backslashxx Hookless)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
