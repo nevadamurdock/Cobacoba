@@ -53,14 +53,21 @@ jobs:
           
           # 3. Terapkan patch utama SUSFS untuk Kernel 4.14
           if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch" ]; then
-            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Patch kernel 4.14 dilewati/sudah diterapkan."
+            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Patch kernel 4.14 otomatis dilewati."
           fi
           
-          # 4. Terapkan patch SUSFS ke dalam direktori KernelSU-Next
+          # 4. Modifikasi Kode Manual KSU-Next agar Mengenal SUSFS (Menggantikan 10_enable_susfs_for_ksu.patch)
           cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
-          if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ]; then
-            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || echo "Patch KSU Next dilewati/sudah diterapkan."
+          
+          # Suntik deklarasi SUSFS ke berkas ksu.c internal milik KSU-Next
+          if [ -f "ksu.c" ]; then
+            sed -i '/extern int ksu_handle_open/a #ifdef CONFIG_KSU_SUSFS\nextern void susfs_init(void);\n#endif' ksu.c
+            sed -i '/ksu_core_init();/a #ifdef CONFIG_KSU_SUSFS\n\tsusfs_init();\n#endif' ksu.c
           fi
+          
+          # Tambahkan hooks pelacak ekstensi biner pada sys.c atau ksu.c jika diperlukan
+          # Langkah ini memaksa integrasi simbol SUSFS masuk ke dalam sistem build KSU-Next
+          echo "ccflags-y += -DCONFIG_KSU_SUSFS" >> Makefile
           
       - name: Injeksi Konfigurasi KSU & SUSFS ke Defconfig
         run: |
