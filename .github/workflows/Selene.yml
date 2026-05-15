@@ -87,17 +87,26 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Hapus sisa build out sebelumnya agar bersih total
+          # Bersihkan sisa build lama
           rm -rf out
-          
-          # Bersihkan perubahan pragma lama pada file jika ada
-          git checkout -- scripts/extract-cert.c || true
           
           # Generasi konfigurasi defconfig
           make O=out selene_defconfig
           
-          # Eksekusi kompilasi penuh dengan mematikan Werror secara global pada skrip host
+          # Coba kompilasi penuh. Jika gagal, jalankan ulang tanpa multithreading (-j1) untuk menangkap letak error aslinya
           make -j$(nproc --all) O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" || \
+          make O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
