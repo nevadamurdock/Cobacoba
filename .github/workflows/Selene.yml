@@ -94,13 +94,13 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Bersihkan sisa build lama
+          # Hapus sisa build out sebelumnya agar bersih total
           rm -rf out
           
           # Generasi konfigurasi defconfig
           make O=out selene_defconfig
           
-          # Eksekusi kompilasi dengan menyuntikkan KCFLAGS untuk menjinakkan komplain Clang
+          # Jalankan kompilasi multi-thread terlebih dahulu
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -113,7 +113,21 @@ jobs:
             STRIP=llvm-strip \
             HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
             HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
-            KCFLAGS="-Wno-error -Wno-unknown-warning-option"
+            KCFLAGS="-Wno-error -Wno-unknown-warning-option" || \
+          (echo "=== MULTI-THREAD FAILS: MENGULANG DENGAN SINGLE-THREAD UNTUK MENANGKAP ERROR ===" && \
+          make O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            KCFLAGS="-Wno-error -Wno-unknown-warning-option")
             
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
