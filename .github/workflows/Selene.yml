@@ -47,7 +47,29 @@ jobs:
       - name: Clone Source Kernel
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
-  
+
+      - name: Hard-Patch Sikat Eror Python3 (xrange) Langsung ke File
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          
+          # 1. Pastikan python2 merujuk ke python3 di level runner
+          sudo ln -sf /usr/bin/python3 /usr/bin/python2
+          
+          # 2. Lakukan penggantian teks 'xrange' menjadi 'range' secara paksa di dalam berkas skrip
+          if [ -f "scripts/dtc/libfdt/mkdtboimg.py" ]; then
+            echo "Melakukan Hard-Patch xrange -> range pada mkdtboimg.py..."
+            
+            # Mengganti fungsi xrange menjadi range
+            sed -i 's/\bxrange\b/range/g' scripts/dtc/libfdt/mkdtboimg.py
+            
+            # Sekalian perbaiki peringatan "SyntaxWarning: is with int literal" agar log bersih
+            sed -i 's/if version is 0:/if version == 0:/g' scripts/dtc/libfdt/mkdtboimg.py
+            
+            echo "[✓] Hard-Patch mkdtboimg.py sukses diterapkan!"
+          else
+            echo "[!] Perhatian: Berkas scripts/dtc/libfdt/mkdtboimg.py tidak ditemukan!"
+          fi
+          
       - name: Integrasi KernelSU (backslashxx Hookless)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
