@@ -39,18 +39,25 @@ jobs:
           git clone -b kernel-4.14 https://gitlab.com/simonpunk/susfs4ksu.git susfs
           
           cd $GITHUB_WORKSPACE/kernel-source
-          cp $GITHUB_WORKSPACE/susfs/kernel/fs/susfs.c fs/
-          cp $GITHUB_WORKSPACE/susfs/kernel/include/linux/susfs.h include/linux/
           
-          OS_PATCH=$(find $GITHUB_WORKSPACE/susfs/Kernel_Patches/ -name "*4.14*.patch" | head -n 1)
-          if [ ! -z "$OS_PATCH" ]; then
-            patch -p1 < "$OS_PATCH" || echo "Patch kernel otomatis dilewati atau disesuaikan secara manual."
+          # 1. Salin file utama SUSFS ke direktori fs kernel
+          cp $GITHUB_WORKSPACE/susfs/fs/susfs.c fs/
+          cp $GITHUB_WORKSPACE/susfs/fs/sus_su.c fs/
+          
+          # 2. Salin file header SUSFS ke direktori include/linux kernel
+          cp $GITHUB_WORKSPACE/susfs/include/linux/susfs.h include/linux/
+          cp $GITHUB_WORKSPACE/susfs/include/linux/sus_su.h include/linux/
+          cp $GITHUB_WORKSPACE/susfs/include/linux/susfs_def.h include/linux/
+          
+          # 3. Terapkan patch utama SUSFS untuk Kernel 4.14
+          if [ -f "$GITHUB_WORKSPACE/susfs/50_add_susfs_in_kernel-4.14.patch" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/susfs/50_add_susfs_in_kernel-4.14.patch || echo "Gagal menerapkan patch kernel 4.14, silakan cek manual."
           fi
           
+          # 4. Terapkan patch SUSFS ke dalam direktori KernelSU-Next
           cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
-          KSU_PATCH=$(find $GITHUB_WORKSPACE/susfs/KernelSU_Patches/ -name "*Next*.patch" | head -n 1)
-          if [ ! -z "$KSU_PATCH" ]; then
-            patch -p1 < "$KSU_PATCH" || echo "Patch KSU Next otomatis dilewati."
+          if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/10_enable_susfs_for_ksu.patch" ]; then
+            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/10_enable_susfs_for_ksu.patch || echo "Gagal menerapkan patch KSU, mencoba patch penyesuaian."
           fi
 
       - name: Injeksi Konfigurasi KSU & SUSFS ke Defconfig
