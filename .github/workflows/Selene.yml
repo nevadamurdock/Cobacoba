@@ -96,6 +96,31 @@ jobs:
             sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
             echo "[✓] Kconfig KernelSU berhasil didaftarkan di drivers/Kconfig"
           fi
+
+      - name: Setup dan Aktivasi SUSFS Mandiri
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          
+          # 1. Daftarkan objek susfs ke dalam fs/Makefile jika belum ada
+          # Kita gunakan kecocokan pola agar baris disisipkan dengan benar di lingkungan MediaTek
+          if ! grep -q "susfs" fs/Makefile; then
+            echo "obj-y += susfs.o" >> fs/Makefile
+            echo "[✓] Berkas susfs.o berhasil didaftarkan ke fs/Makefile"
+          fi
+          
+          # 2. Daftarkan konfigurasi Kconfig SUSFS ke dalam fs/Kconfig agar menu konfigurasi terbaca
+          if ! grep -q "susfs" fs/Kconfig; then
+            sed -i '/endmenu/i source "fs/susfs/Kconfig"' fs/Kconfig
+            echo "[✓] Kconfig SUSFS berhasil didaftarkan ke fs/Kconfig"
+          fi
+          
+          # 3. KUNCI UTAMA: Pastikan berkas c atau folder susfs berada di tempat yang benar
+          # Kernel 4.14/5.4 sering kali membutuhkan file fs/susfs.c murni, bukan di dalam sub-folder.
+          if [ -d "fs/susfs" ] && [ -f "fs/susfs/susfs.c" ]; then
+            echo "Menyelaraskan letak berkas kode sumber SUSFS..."
+            cp fs/susfs/susfs.c fs/susfs.c
+            cp -r fs/susfs/include/linux/* include/linux/ 2>/dev/null || true
+          fi    
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
