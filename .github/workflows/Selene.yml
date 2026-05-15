@@ -6,7 +6,7 @@ on:
       KERNEL_BRANCH:
         description: 'Cabang (Branch) Source Kernel'
         required: true
-        default: 'main'
+        default: 'master'
 
 env:
   TZ: Asia/Jakarta
