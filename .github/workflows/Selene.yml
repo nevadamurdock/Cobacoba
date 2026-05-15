@@ -1,94 +1,126 @@
-name: Build Hydrogen Kernel Selene (ZyC Clang 16)
+name: Build Custom Kernel - Redmi 10 (Selene)
+
 on:
   workflow_dispatch:
+    inputs:
+      KERNEL_BRANCH:
+        description: 'Cabang (Branch) Source Kernel'
+        required: true
+        default: 'main'
+
+env:
+  TZ: Asia/Jakarta
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          repository: MiCode/Xiaomi_Kernel_OpenSource
-          ref: selene-r-oss-update
-          fetch-depth: 1
-
-      - name: Install Build Dependencies
+      - name: Setup Lingkungan Kerja & Dependensi
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm libssl-dev libelf-dev libncurses-dev clang-14 wget tar
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 libffi-dev
 
-      - name: Setup Toolchain (ZyC Clang 16)
+      - name: Clone Toolchain (Proton Clang)
         run: |
-          mkdir -p bin/clang
-          wget https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260510-release/Clang-16.0.6-20260510.tar.gz
-          tar -C bin/clang -zxvf Clang-16.0.6-20260510.tar.gz
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $GITHUB_WORKSPACE/proton-clang
 
-      - name: Integrate KernelSU & SusFS
+      - name: Clone Source Kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_vendor_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
+
+      - name: Integrasi KernelSU-Next (Legacy)
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
+      - name: Integrasi SUSFS Patches (Kernel 4.14)
+        run: |
+          cd $GITHUB_WORKSPACE
+          git clone -b kernel-4.14 https://gitlab.com/simonpunk/susfs4ksu.git susfs
           
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs
-          cp susfs/kernel_patches/fs/* fs/
-          cp susfs/kernel_patches/include/linux/* include/linux/
-          patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch || true
+          cd $GITHUB_WORKSPACE/kernel-source
+          # Menyalin file utama SUSFS ke dalam source tree kernel
+          cp $GITHUB_WORKSPACE/susfs/kernel/fs/susfs.c fs/
+          cp $GITHUB_WORKSPACE/susfs/kernel/include/linux/susfs.h include/linux/
+          
+          # Menerapkan patch spesifik untuk struktur kernel 4.14 jika tersedia
+          OS_PATCH=$(find $GITHUB_WORKSPACE/susfs/Kernel_Patches/ -name "*4.14*.patch" | head -n 1)
+          if [ ! -z "$OS_PATCH" ]; then
+            patch -p1 < "$OS_PATCH" || echo "Patch kernel otomatis dilewati atau disesuaikan secara manual."
+          fi
+          
+          # Menerapkan patch SUSFS ke dalam direktori KernelSU-Next
+          cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
+          KSU_PATCH=$(find $GITHUB_WORKSPACE/susfs/KernelSU_Patches/ -name "*Next*.patch" | head -n 1)
+          if [ ! -z "$KSU_PATCH" ]; then
+            patch -p1 < "$KSU_PATCH" || echo "Patch KSU Next otomatis dilewati."
+          fi
 
-      - name: Build Kernel
+      - name: Injeksi Konfigurasi KSU & SUSFS ke Defconfig
         run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          DEFCONFIG_PATH="arch/arm64/configs/selene_defconfig"
+          
+          echo "" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG_PATH
+
+      - name: Proses Kompilasi Kernel
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          export PATH="$GITHUB_WORKSPACE/proton-clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$(pwd)/bin/clang/bin:$PATH"
-          export KBUILD_BUILD_USER="Sam"
-          export KBUILD_BUILD_HOST="ZyC-Build"
           
-          # Bersihkan sisa build
-          rm -rf out
-          
-          # Fix compiler check & stack protector
-          sed -i '/prepare-compiler-check:/a \	@echo "Skipping compiler check"' Makefile
-          sed -i '/$(error Cannot use CONFIG_CC_STACKPROTECTOR_STRONG/d' Makefile
-          
-          # Argumen build dengan pemaksaan LLVM Integrated Assembler
-          MAKE_ARGS="ARCH=arm64 \
-            O=out \
+          make O=out selene_defconfig
+          make -j$(nproc --all) O=out \
             CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             LD=ld.lld \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS=-Wno-error"
+            STRIP=llvm-strip
 
-          make $MAKE_ARGS selene_defconfig[cite: 1]
+      - name: Setup AnyKernel3 (Non-GKI Optimization)
+        run: |
+          cd $GITHUB_WORKSPACE
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           
-          {
-            echo "CONFIG_KSU=y"
-            echo "CONFIG_SUSFS=y"
-            echo "CONFIG_KSU_SUSFS=y"
-            echo "CONFIG_OVERLAY_FS=y"
-            echo "CONFIG_KPROBES=y"
-            echo "CONFIG_HAVE_KPROBES=y"
-            echo "CONFIG_KPROBE_EVENTS=y"
-            echo "CONFIG_CC_STACKPROTECTOR_NONE=y"
-          } >> out/.config[cite: 1]
+          # Modifikasi skrip AnyKernel3 agar kompatibel dengan non-GKI selene
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+          sed -i 's/block=\/dev\/block\/bootdevice\/by-name\/boot/block=auto/g' AnyKernel3/anykernel.sh
           
-          make $MAKE_ARGS olddefconfig[cite: 1]
+          # Memindahkan output kernel image ke AnyKernel
+          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/zImage
+          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/zImage
+          fi
           
-          # Gunakan -j$(nproc) dan pantau log jika gagal
-          make -j$(nproc --all) $MAKE_ARGS || make -j1 $MAKE_ARGS
+          # Menyertakan berkas DTB jika terkompilasi secara terpisah
+          if [ -f kernel-source/out/arch/arm64/boot/dtb ]; then
+            cp kernel-source/out/arch/arm64/boot/dtb AnyKernel3/dtb
+          fi
 
-      - name: Upload Kernel Artifact
+      - name: Pengemasan Flashable Zip
+        run: |
+          cd $GITHUB_WORKSPACE/AnyKernel3
+          zip -r9 ../GusKernel-selene-KSU-Next.zip * -x .git* README.md
+
+      - name: Unggah Hasil Build
         uses: actions/upload-artifact@v4
         with:
-          name: Hydrogen-Kernel-Selene-ZyC-Final
-          path: |
-            out/arch/arm64/boot/Image.gz-dtb
-            out/arch/arm64/boot/Image.gz
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dtbo.img
+          name: GusKernel-selene-Target
+          path: GusKernel-selene-KSU-Next.zip
