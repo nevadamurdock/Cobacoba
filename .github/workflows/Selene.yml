@@ -74,8 +74,15 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel-source
           DEFCONFIG_PATH="arch/arm64/configs/selene_defconfig"
           
+          # Bersihkan sisa baris kosong di akhir berkas
           echo "" >> $DEFCONFIG_PATH
+          
+          # Tambahkan konfigurasi KernelSU-Next Non-GKI
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_MANUAL_HOOKS=y" >> $DEFCONFIG_PATH
+          
+          # Tambahkan konfigurasi SUSFS Engine
+          echo "CONFIG_SU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_PATH
