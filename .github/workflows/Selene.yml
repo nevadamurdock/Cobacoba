@@ -23,6 +23,8 @@ jobs:
       - name: Clone Toolchain (Proton Clang)
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $GITHUB_WORKSPACE/proton-clang
+          # Hapus linker ld internal Proton Clang agar beralih ke linker host Ubuntu (mengatasi konflik .relr.dyn)
+          rm -f $GITHUB_WORKSPACE/proton-clang/bin/ld
 
       - name: Clone Source Kernel
         run: |
@@ -85,14 +87,14 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Flag untuk mengabaikan warning deprecation OpenSSL 3.0 pada host
-          export HOSTCFLAGS="-Wno-deprecated-declarations"
-          export HOSTCXXFLAGS="-Wno-deprecated-declarations"
+          # Flag untuk mengabaikan warning deprecation OpenSSL 3.0 pada host Ubuntu 24.04
+          export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
+          export HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error"
           
-          # Generasi konfigurasi awal menggunakan linker host sistem untuk mencegah konflik relr.dyn
-          make O=out selene_defconfig HOSTLD=/usr/bin/ld
+          # Generasi konfigurasi defconfig
+          make O=out selene_defconfig
           
-          # Eksekusi kompilasi utama dengan memaksa HOSTLD menggunakan linker lokal Ubuntu
+          # Eksekusi ekstraksi kompilasi penuh
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -102,10 +104,7 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            HOSTLD=/usr/bin/ld \
-            HOSTCFLAGS="-Wno-deprecated-declarations" \
-            HOSTCXXFLAGS="-Wno-deprecated-declarations"
+            STRIP=llvm-strip
             
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
