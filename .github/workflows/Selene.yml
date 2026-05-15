@@ -53,16 +53,13 @@ jobs:
           cp $GITHUB_WORKSPACE/susfs/kernel_patches/include/linux/sus_su.h include/linux/
           cp $GITHUB_WORKSPACE/susfs/kernel_patches/include/linux/susfs_def.h include/linux/
           
-          # 3. Terapkan patch utama SUSFS untuk Kernel 4.14
+          # 3. Terapkan patch utama SUSFS untuk komponen dasar Kernel 4.14 (Wajib agar defconfig mengenali SUSFS)
           if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch" ]; then
             patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/50_add_susfs_in_kernel-4.14.patch
           fi
           
-          # 4. Terapkan patch SUSFS ke dalam direktori KernelSU backslashxx
-          cd $GITHUB_WORKSPACE/kernel-source/drivers/kernelsu
-          if [ -f "$GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ]; then
-            patch -p1 < $GITHUB_WORKSPACE/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          fi
+          # CATATAN: Langkah penambalan 10_enable_susfs_for_ksu.patch SENGAJA DIHAPUS 
+          # karena konflik struktur kode pada varian KSU Hookless backslashxx.
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
