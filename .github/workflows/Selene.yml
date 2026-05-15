@@ -64,15 +64,31 @@ jobs:
       - name: Unduh dan Setup KernelSU Hookless (backslashxx)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
-          rm -rf drivers/kernelsu
-          git clone https://github.com/backslashxx/KernelSU.git drivers/kernelsu
-          mv drivers/kernelsu/kernel/* drivers/kernelsu/
           
+          # 1. Bersihkan sisa folder lama jika ada
+          rm -rf drivers/kernelsu
+          
+          # 2. Unduh repositori backslashxx
+          echo "Mengunduh source KernelSU..."
+          git clone https://github.com/backslashxx/KernelSU.git drivers/kernelsu
+          
+          # 3. FIX OVERWRITE: Salin paksa seluruh isi sub-folder kernel ke luar
+          echo "Menata ulang struktur folder KernelSU..."
+          cp -r drivers/kernelsu/kernel/* drivers/kernelsu/
+          
+          # 4. Hapus sub-folder kernel asli agar bersih dan tidak duplikat
+          rm -rf drivers/kernelsu/kernel
+          
+          # 5. Daftarkan folder kernelsu ke dalam drivers/Makefile jika belum ada
           if ! grep -q "kernelsu" drivers/Makefile; then
             echo "obj-y += kernelsu/" >> drivers/Makefile
+            echo "[✓] Folder KernelSU berhasil didaftarkan di drivers/Makefile"
           fi
+          
+          # 6. Daftarkan konfigurasi Kconfig ke dalam drivers/Kconfig jika belum ada
           if ! grep -q "kernelsu" drivers/Kconfig; then
             sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+            echo "[✓] Kconfig KernelSU berhasil didaftarkan di drivers/Kconfig"
           fi
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
