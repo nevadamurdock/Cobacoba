@@ -100,7 +100,7 @@ jobs:
           # Generasi konfigurasi defconfig
           make O=out selene_defconfig
           
-          # Coba kompilasi penuh. Jika gagal, jalankan ulang tanpa multithreading (-j1) untuk menangkap letak error aslinya
+          # Eksekusi kompilasi dengan menyuntikkan KCFLAGS untuk menjinakkan komplain Clang
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -112,19 +112,8 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
-            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" || \
-          make O=out \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
-            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error"
+            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            KCFLAGS="-Wno-error -Wno-unknown-warning-option"
             
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
