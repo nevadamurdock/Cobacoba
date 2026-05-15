@@ -6,7 +6,7 @@ on:
       KERNEL_BRANCH:
         description: 'Cabang (Branch) Source Kernel'
         required: true
-        default: 'lineage-20' # <-- Sudah diubah ke lineage-20
+        default: 'lineage-20'
 
 env:
   TZ: Asia/Jakarta
@@ -26,7 +26,7 @@ jobs:
 
       - name: Clone Source Kernel
         run: |
-          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_vendor_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
+          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
 
       - name: Integrasi KernelSU-Next (Legacy)
         run: |
@@ -114,7 +114,7 @@ jobs:
           zip -r9 ../GusKernel-selene-KSU-Next.zip * -x .git* README.md
 
       - name: Unggah Hasil Build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact=v4
         with:
           name: GusKernel-selene-Target
           path: GusKernel-selene-KSU-Next.zip
