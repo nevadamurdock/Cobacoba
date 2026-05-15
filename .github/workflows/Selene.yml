@@ -60,6 +60,22 @@ jobs:
           
           # CATATAN: Langkah penambalan 10_enable_susfs_for_ksu.patch SENGAJA DIHAPUS 
           # karena konflik struktur kode pada varian KSU Hookless backslashxx.
+
+      - name: Integrasi Jalur Tambahan KernelSU & SUSFS
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          
+          # 1. Pastikan drivers/Makefile membaca folder kernelsu jika belum terdaftar
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            echo "obj-y += kernelsu/" >> drivers/Makefile
+            echo "[✓] Jalur KernelSU berhasil didaftarkan ke drivers/Makefile"
+          fi
+          
+          # 2. Pastikan fs/Makefile membaca berkas susfs jika belum terdaftar
+          if ! grep -q "susfs" fs/Makefile; then
+            echo "obj-y += susfs.o" >> fs/Makefile
+            echo "[✓] Jalur SUSFS berhasil didaftarkan ke fs/Makefile"
+          fi    
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
@@ -75,7 +91,6 @@ jobs:
           echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> $DEFCONFIG_PATH
           
           # Konfigurasi SUSFS Engine
-          echo "CONFIG_SU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_PATH
@@ -94,20 +109,19 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Bersihkan sisa build out lama
+          # Hapus sisa out lama agar tidak ada cache yang mengganggu
           rm -rf out
           
-          # FIX DUPLICATE SYMBOL WIREGUARD: 
-          # Mematikan kompilasi WireGuard di folder net/ jika di folder drivers/net/ sudah ada.
+          # FIX DUPLICATE SYMBOL WIREGUARD: Jaga-jaga agar tidak bentrok lagi
           if [ -d "drivers/net/wireguard" ] && [ -d "net/wireguard" ]; then
             echo "Menjinakkan duplikasi WireGuard..."
             sed -i 's/^obj-$(CONFIG_WIREGUARD).*$/# Modul dinonaktifkan karena duplikat/' net/Makefile
           fi
           
-          # Generasi konfigurasi defconfig
+          # Buat defconfig baru
           make O=out selene_defconfig
           
-          # Eksekusi kompilasi kembali ke mode multi-thread (-j$(nproc --all))
+          # Jalankan build cepat (Multi-Thread) terlebih dahulu
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -120,7 +134,21 @@ jobs:
             STRIP=llvm-strip \
             HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
             HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
-            KCFLAGS="-Wno-error -Wno-unknown-warning-option"
+            KCFLAGS="-Wno-error -Wno-unknown-warning-option" || \
+          (echo "=== BUILD UTAMA GAGAL: MENGISOLASI TITIK EROR DENGAN SINGLE-THREAD ===" && \
+          make O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
+            KCFLAGS="-Wno-error -Wno-unknown-warning-option")
             
       - name: Setup AnyKernel3 (Non-GKI Optimization)
         run: |
