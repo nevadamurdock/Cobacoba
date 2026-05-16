@@ -241,28 +241,37 @@ jobs:
             HOSTCXXFLAGS="-Wno-deprecated-declarations -Wno-error" \
             KCFLAGS="-Wno-error -Wno-unknown-warning-option")
             
-      - name: Setup AnyKernel3 (Non-GKI Optimization)
+      - name: Mengemas Kernel dengan AnyKernel3
         run: |
           cd $GITHUB_WORKSPACE
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-          sed -i 's/block=\/dev\/block\/bootdevice\/by-name\/boot/block=auto/g' AnyKernel3/anykernel.sh
+          # 1. Unduh AnyKernel3 bersih dari repositori osm0sis
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           
-          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/zImage
-          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/zImage
+          # 2. Salin biner kernel utama dan dtbo.img ke dalam folder AnyKernel3
+          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cp kernel-source/out/arch/arm64/boot/dtbo.img AnyKernel3/
+          
+          cd AnyKernel3
+          
+          # 3. INJEKSI OTOMATIS: Konfigurasi penempatan partisi ke anykernel.sh
+          echo "Mengonfigurasi jalur partisi di anykernel.sh..."
+          sed -i 's|^block=.*|block=/dev/block/by-name/boot;|' anykernel.sh
+          sed -i 's|^dtbo_block=.*|dtbo_block=/dev/block/by-name/dtbo;|' anykernel.sh
+          sed -i 's|^is_slot_device=.*|is_slot_device=0;|' anykernel.sh
+          
+          # Matikan cek device bawaan agar tidak konflik saat flashing di recovery
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+          
+          # 4. SUNTIK PERINTAH FLASH DTBO: Menggunakan \n agar aman dari eror indentasi YAML
+          if ! grep -q "flash_dtbo" anykernel.sh; then
+            sed -i '/write_boot;/a \\n# Flash DTBO Image\nflash_dtbo;' anykernel.sh
+            echo "[✓] Instruksi flash_dtbo berhasil disuntikkan."
           fi
           
-          if [ -f kernel-source/out/arch/arm64/boot/dtb ]; then
-            cp kernel-source/out/arch/arm64/boot/dtb AnyKernel3/dtb
-          fi
-
-      - name: Pengemasan Flashable Zip
-        run: |
-          cd $GITHUB_WORKSPACE/AnyKernel3
-          zip -r9 ../GusKernel-selene-KSU-Next.zip * -x .git* README.md
+          # 5. Kompres seluruh isi folder menjadi Flashable Zip
+          zip -r9 ../GusKernel-Ultimate-Ngentot.zip * -x .git* README.md
+          echo "[✓] AnyKernel3 sukses dikemas menjadi GusKernel-Ultimate-Ngentot.zip!"
 
       - name: Unggah Hasil Build
         uses: actions/upload-artifact@v4
