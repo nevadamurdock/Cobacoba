@@ -124,40 +124,34 @@ jobs:
             echo "[✓] Kconfig KernelSU berhasil didaftarkan di drivers/Kconfig"
           fi
 
-      - name: Setup dan Aktivasi SUSFS Mandiri (Force Build)
+      - name: Setup dan Aktivasi SUSFS Mandiri (Metode Non-GKI Clean)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           
-          # 1. Bersihkan sisa-sisa konfigurasi lama agar tidak konflik
-          sed -i '/source "fs\/susfs\/Kconfig"/d' fs/Kconfig
-          sed -i '/obj-y += susfs.o/d' fs/Makefile
+          # 1. Bersihkan sisa eksperimen sub-folder lama jika ada
+          rm -rf fs/susfs
           sed -i '/obj-y += susfs\//d' fs/Makefile
+          sed -i '/obj-y += susfs.o/d' fs/Makefile
+          sed -i '/source "fs\/susfs\/Kconfig"/d' fs/Kconfig
           
-          # 2. Paksa pasang struktur folder susfs yang benar
-          mkdir -p fs/susfs
-          
-          # Jalankan pencarian file susfs.c bawaan patch kamu
-          if [ -f "fs/susfs.c" ]; then
-            cp fs/susfs.c fs/susfs/susfs.c
+          # 2. Amankan penempatan file susfs.c langsung di bawah folder fs/
+          if [ -f "fs/susfs/susfs.c" ]; then
+            mv fs/susfs/susfs.c fs/susfs.c
           elif [ -f "susfs.c" ]; then
-            cp susfs.c fs/susfs/susfs.c
+            cp susfs.c fs/susfs.c
+          fi
+
+          # 3. KUNCI JACKA1LTMAN: Suntik langsung ke baris awal fs/Makefile sebelum objek lain
+          # Ini memaksa Clang mengompilasi susfs.o bersamaan dengan vfs bawaan kernel
+          sed -i '1iobj-y += susfs.o' fs/Makefile
+          echo "[✓] Berkas susfs.o berhasil disuntikkan ke hulu fs/Makefile"
+          
+          # 4. Salin header internal jika ada di dalam paket patch kamu
+          if [ -d "fs/susfs/include/linux" ]; then
+            cp -r fs/susfs/include/linux/* include/linux/ 2>/dev/null || true
           fi
           
-          # 3. Daftarkan folder susfs ke Makefile utama fs/
-          echo "obj-y += susfs/" >> fs/Makefile
-          
-          # 4. KUNCI PERBAIKAN: Buat Makefile internal + Tambahkan ccflags agar bisa membaca berkas di folder fs/
-          echo "obj-y += susfs.o" > fs/susfs/Makefile
-          echo "ccflags-y += -I\$(srctree)/fs" >> fs/susfs/Makefile
-          
-          # 5. Salin header linux susfs ke folder include utama jika ada
-          if [ -d "fs/include/linux" ]; then
-            cp -r fs/include/linux/* include/linux/ 2>/dev/null || true
-          elif [ -d "include/linux" ] && [ -f "include/linux/susfs.h" ]; then
-            echo "[✓] Header susfs.h sudah berada di tempat yang benar."
-          fi
-          
-          echo "[✓] Struktur Force-Build SUSFS dengan flag header berhasil ditata!"
+          echo "[✓] Penataan SUSFS mengikuti struktur Non-GKI sukses!"
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
@@ -277,4 +271,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: GusKernel-selene-Target
-          path: GusKernel-selene-KSU-Next.zip
+          path: GusKernel-Ultimate-Ngentot.zip
