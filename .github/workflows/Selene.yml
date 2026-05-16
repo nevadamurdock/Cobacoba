@@ -124,44 +124,39 @@ jobs:
             echo "[✓] Kconfig KernelSU berhasil didaftarkan di drivers/Kconfig"
           fi
 
-      - name: Setup dan Aktivasi SUSFS Mandiri
+      - name: Setup dan Aktivasi SUSFS Mandiri (Force Build)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           
-          # 1. Pastikan objek susfs terdaftar di fs/Makefile
-          if ! grep -q "susfs.o" fs/Makefile; then
-            echo "obj-y += susfs.o" >> fs/Makefile
-            echo "[✓] Berkas susfs.o berhasil didaftarkan ke fs/Makefile"
-          fi
+          # 1. Bersihkan sisa-sisa konfigurasi lama agar tidak konflik
+          sed -i '/source "fs\/susfs\/Kconfig"/d' fs/Kconfig
+          sed -i '/obj-y += susfs.o/d' fs/Makefile
           
-          # 2. Amankan jalur file Kconfig agar tidak memicu error 'can't open file'
-          # Kita buat foldernya terlebih dahulu jika belum ada
+          # 2. Paksa pasang struktur folder susfs yang benar
           mkdir -p fs/susfs
           
-          # Jika file Kconfig bawaan susfs berada di luar, kita amankan ke dalam folder fs/susfs/
-          if [ -f "fs/Kconfig.susfs" ]; then
-            cp fs/Kconfig.susfs fs/susfs/Kconfig
-          elif [ -f "fs/susfs.Kconfig" ]; then
-            cp fs/susfs.Kconfig fs/susfs/Kconfig
-          elif [ ! -f "fs/susfs/Kconfig" ]; then
-            # Jika benar-benar tidak ada berkas Kconfig dari source susfs, kita buatkan dummy agar build tidak crash
-            echo 'config SUSFS' > fs/susfs/Kconfig
-            echo '    bool "SUSFS Support"' >> fs/susfs/Kconfig
+          # Jalankan pencarian file susfs.c bawaan patch kamu
+          if [ -f "fs/susfs.c" ]; then
+            cp fs/susfs.c fs/susfs/susfs.c
+          elif [ -f "susfs.c" ]; then
+            cp susfs.c fs/susfs/susfs.c
+          fi
+
+          # 3. KUNCI UTAMA: Daftarkan folder susfs ke Makefile utama fs/
+          # Kita gunakan perintah 'core-y' atau pasang di baris paling atas agar wajib dieksekusi Clang
+          echo "obj-y += susfs/" >> fs/Makefile
+          
+          # 4. Buat Makefile internal di dalam folder fs/susfs/ agar dia mengompilasi susfs.c
+          echo "obj-y += susfs.o" > fs/susfs/Makefile
+          
+          # 5. Salin header linux susfs ke folder include utama jika ada
+          if [ -d "fs/include/linux" ]; then
+            cp -r fs/include/linux/* include/linux/ 2>/dev/null || true
+          elif [ -d "include/linux" ] && [ -f "include/linux/susfs.h" ]; then
+            echo "[✓] Header susfs.h sudah berada di tempat yang benar."
           fi
           
-          # 3. Daftarkan menu ke fs/Kconfig jika belum terdaftar
-          if ! grep -q "fs/susfs/Kconfig" fs/Kconfig; then
-            sed -i '/endmenu/i source "fs/susfs/Kconfig"' fs/Kconfig
-            echo "[✓] Jalur fs/susfs/Kconfig berhasil dipetakan di fs/Kconfig"
-          fi
-          
-          # 4. Penyelarasan kode sumber utama susfs.c
-          if [ -f "fs/susfs/susfs.c" ]; then
-            cp fs/susfs/susfs.c fs/susfs.c
-          fi
-          if [ -d "fs/susfs/include/linux" ]; then
-            cp -r fs/susfs/include/linux/* include/linux/ 2>/dev/null || true
-          fi
+          echo "[✓] Struktur Force-Build SUSFS berhasil ditata!"
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
@@ -175,6 +170,10 @@ jobs:
           
           # Sakelar Utama KernelSU
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_SUSFS=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_SUSFS_AUTO_ADD_SUS_PATH=y" >> $DEFCONFIG_PATH
           
           # AKTIFKAN FITUR HOOKLESS (Syscall Table Tampering)
           echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> $DEFCONFIG_PATH
