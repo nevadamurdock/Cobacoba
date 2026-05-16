@@ -131,6 +131,7 @@ jobs:
           # 1. Bersihkan sisa-sisa konfigurasi lama agar tidak konflik
           sed -i '/source "fs\/susfs\/Kconfig"/d' fs/Kconfig
           sed -i '/obj-y += susfs.o/d' fs/Makefile
+          sed -i '/obj-y += susfs\//d' fs/Makefile
           
           # 2. Paksa pasang struktur folder susfs yang benar
           mkdir -p fs/susfs
@@ -141,13 +142,13 @@ jobs:
           elif [ -f "susfs.c" ]; then
             cp susfs.c fs/susfs/susfs.c
           fi
-
-          # 3. KUNCI UTAMA: Daftarkan folder susfs ke Makefile utama fs/
-          # Kita gunakan perintah 'core-y' atau pasang di baris paling atas agar wajib dieksekusi Clang
+          
+          # 3. Daftarkan folder susfs ke Makefile utama fs/
           echo "obj-y += susfs/" >> fs/Makefile
           
-          # 4. Buat Makefile internal di dalam folder fs/susfs/ agar dia mengompilasi susfs.c
+          # 4. KUNCI PERBAIKAN: Buat Makefile internal + Tambahkan ccflags agar bisa membaca berkas di folder fs/
           echo "obj-y += susfs.o" > fs/susfs/Makefile
+          echo "ccflags-y += -I\$(srctree)/fs" >> fs/susfs/Makefile
           
           # 5. Salin header linux susfs ke folder include utama jika ada
           if [ -d "fs/include/linux" ]; then
@@ -156,7 +157,7 @@ jobs:
             echo "[✓] Header susfs.h sudah berada di tempat yang benar."
           fi
           
-          echo "[✓] Struktur Force-Build SUSFS berhasil ditata!"
+          echo "[✓] Struktur Force-Build SUSFS dengan flag header berhasil ditata!"
           
       - name: Injeksi Konfigurasi KSU Hookless & SUSFS ke Defconfig
         run: |
