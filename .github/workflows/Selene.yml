@@ -48,34 +48,20 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} https://github.com/selene-devs/android_kernel_xiaomi_selene.git $GITHUB_WORKSPACE/kernel-source
 
-      - name: Hard-Patch Total Python3 Compatibility (xrange & bytes)
+      - name: Ganti dengan Skrip mkdtboimg Python 3 Resmi AOSP
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           
-          # 1. Pastikan symlink python2 aktif
+          # 1. Pastikan symlink python2 aktif ke python3
           sudo ln -sf /usr/bin/python3 /usr/bin/python2
           
-          if [ -f "scripts/dtc/libfdt/mkdtboimg.py" ]; then
-            echo "Memulai operasi Hard-Patch total pada mkdtboimg.py..."
-            
-            # Perbaikan 1: Ganti xrange menjadi range (Eror sebelumnya)
-            sed -i 's/\bxrange\b/range/g' scripts/dtc/libfdt/mkdtboimg.py
-            
-            # Perbaikan 2: Ubah inisialisasi buffer string kosong menjadi bytes kosong (Menyelesaikan TypeError)
-            sed -i "s/dt_entry_buf = ''/dt_entry_buf = b''/g" scripts/dtc/libfdt/mkdtboimg.py
-            sed -i "s/buf = ''/buf = b''/g" scripts/dtc/libfdt/mkdtboimg.py
-            
-            # Perbaikan 3: Ubah mode penulisan berkas dari teks ('w') menjadi biner ('wb')
-            sed -i "s/arg_file = open(filename, 'w')/arg_file = open(filename, 'wb')/g" scripts/dtc/libfdt/mkdtboimg.py
-            sed -i "s/open(filename, 'w')/open(filename, 'wb')/g" scripts/dtc/libfdt/mkdtboimg.py
-            
-            # Perbaikan 4: Bersihkan SyntaxWarning tiruan
-            sed -i 's/if version is 0:/if version == 0:/g' scripts/dtc/libfdt/mkdtboimg.py
-            
-            echo "[✓] Patch total mkdtboimg.py berhasil diterapkan!"
-          else
-            echo "[!] Berkas mkdtboimg.py tidak ditemukan!"
-          fi
+          # 2. Ambil skrip mkdtboimg resmi bawaan AOSP yang sudah mendukung Python 3 penuh
+          echo "Mengunduh mkdtboimg.py standar Python 3 dari Google AOSP..."
+          curl -sSL "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" | base64 --decode > scripts/dtc/libfdt/mkdtboimg.py
+          
+          # 3. Berikan hak akses eksekusi pada skrip baru
+          chmod +x scripts/dtc/libfdt/mkdtboimg.py
+          echo "[✓] Berhasil menimpa berkas dengan mkdtboimg.py versi Python 3 Native!"
           
       - name: Integrasi KernelSU (backslashxx Hookless)
         run: |
