@@ -41,7 +41,21 @@ jobs:
         run: |
           mkdir -p toolchain
           cd toolchain
-          curl -LO "https://github.com/greenforce-project/greenforce_clang/releases/download/20260516/greenforce_clang-20260516-x86_64.tar.gz"
+          
+          # Gunakan URL langsung ke biner pra-kompilasi Greenforce Clang
+          # Pastikan tag rilis dan nama file tgz sesuai dengan repositori greenforce-project
+          CLANG_URL="https://github.com/greenforce-project/greenforce_clang/releases/download/20260516/greenforce_clang-20260516-x86_64.tar.gz"
+          
+          echo "Downloading toolchain from $CLANG_URL..."
+          curl -fLO "$CLANG_URL" || { echo "Gagal mengunduh biner Clang! Periksa apakah URL atau Tag Rilis sudah benar."; exit 1; }
+          
+          # Cek tipe file untuk memastikan yang diunduh bukan halaman HTML error
+          if file greenforce_clang-20260516-x86_64.tar.gz | grep -q "HTML"; then
+             echo "Error: File yang diunduh berformat HTML (kemungkinan rilis/aset 404 Not Found)."
+             cat greenforce_clang-20260516-x86_64.tar.gz | head -n 5
+             exit 1
+          fi
+          
           tar -xzf greenforce_clang-20260516-x86_64.tar.gz
           rm greenforce_clang-20260516-x86_64.tar.gz
 
